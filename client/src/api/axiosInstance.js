@@ -9,7 +9,7 @@
 import axios from 'axios'
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000',
+  baseURL: import.meta.env.VITE_API_BASE_URL || 'https://agrosense-6o7h.onrender.com',
   timeout: 10000, // 10 seconds — important for unreliable cellular connections
   headers: {
     'Content-Type': 'application/json',
