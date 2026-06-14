@@ -26,14 +26,15 @@ import Toast                           from '../components/Toast.jsx'
 
 // ── Crop options ──────────────────────────────────────────────────────────────
 const CROPS = [
-  { label: 'Cocoa Yam',        id: 'cocoa_yam' },
-  { label: 'Yam',              id: 'yam' },
-  { label: 'Sweet Potatoes',   id: 'sweet_potatoes' },
-  { label: 'Cow Peas (Beans)', id: 'cow_peas_beans' },
-  { label: 'Cassava',          id: 'cassava' },
-  { label: 'Maize',            id: 'maize' },
-  { label: 'Groundnuts',       id: 'groundnuts' },
-  { label: 'Rice',             id: 'rice' },
+  { label: 'Cocoa Yam',              id: 'cocoa_yam' },
+  { label: 'Yam',                    id: 'yam' },
+  { label: 'Sweet Potatoes',         id: 'sweet_potatoes' },
+  { label: 'Cow Peas (Beans)',        id: 'cow_peas_beans' },
+  { label: 'Cassava',                id: 'cassava' },
+  { label: 'Maize',                  id: 'maize' },
+  { label: 'Groundnuts',             id: 'groundnuts' },
+  { label: 'Rice (Lowland/Paddy)',   id: 'rice_lowland_paddy' },
+  { label: 'Rice (Upland)',          id: 'rice_upland' },
 ]
 
 // ── Online helper ─────────────────────────────────────────────────────────────
