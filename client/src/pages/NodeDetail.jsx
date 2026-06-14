@@ -1,12 +1,18 @@
 // client/src/pages/NodeDetail.jsx
 // ─────────────────────────────────────────────────────────────────────────────
-// Node Detail page — real-time sensor readings + advanced irrigation control.
+// Node Detail — real-time sensor readings, irrigation control, reading requests.
 // Route: /node/:deviceId
 //
-// Irrigation control state machine:
-//   idle → pending (Firestore listener + 5-min timeout) → idle (on ack)
-//                                                       → idle (on timeout)
-//   idle → offline message (if device is offline when button tapped)
+// Reading request state machine:
+//   idle → pending  (captures baseline updatedAt, waits for a NEWER updatedAt)
+//          ↓ new reading arrives in existing device onSnapshot
+//        idle  (toast: "Fresh readings received")
+//          ↓ 5-min timeout fires (no new reading)
+//        idle  (toast: "No response from device")
+//          ↓ offline when tapped
+//        idle  (toast: SMS queued)
+//
+// Irrigation state machine: (see COMMAND_TIMEOUT_MS block below)
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useEffect, useState, useRef } from 'react'
@@ -19,10 +25,11 @@ import {
 import { db }                                 from '../firebase.js'
 import api                                    from '../api/axiosInstance.js'
 import ThemeToggle                            from '../components/ThemeToggle.jsx'
+import Toast                                  from '../components/Toast.jsx'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-// How long to wait for an ESP32 acknowledgment before showing the SMS warning
-const COMMAND_TIMEOUT_MS = 5 * 60 * 1000  // 5 minutes
+const COMMAND_TIMEOUT_MS = 5 * 60 * 1000  // 5 minutes for irrigation ack
+const READ_TIMEOUT_MS    = 5 * 60 * 1000  // 5 minutes for reading response
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function timeAgo(timestamp) {
@@ -34,6 +41,10 @@ function timeAgo(timestamp) {
   const hours = Math.floor(minutes / 60)
   if (hours < 24)   return `${hours} hour${hours === 1 ? '' : 's'} ago`
   return `${Math.floor(hours / 24)} day${Math.floor(hours / 24) === 1 ? '' : 's'} ago`
+}
+function toDate(ts) {
+  if (!ts) return null
+  return ts.toDate?.() ?? new Date(ts)
 }
 function batteryPct(mv) {
   if (mv == null) return null
@@ -47,8 +58,8 @@ function batteryColor(pct) {
 }
 function isOnline(device) {
   if (!device?.updatedAt) return false
-  const last = device.updatedAt.toDate?.() ?? new Date(device.updatedAt)
-  return (Date.now() - last.getTime()) < 30 * 60 * 1000
+  const last = toDate(device.updatedAt)
+  return last && (Date.now() - last.getTime()) < 30 * 60 * 1000
 }
 
 // ── Signal Bars ───────────────────────────────────────────────────────────────
@@ -98,44 +109,19 @@ function SensorCard({ icon, label, value, unit, color, alert, span }) {
 // ── Irrigation Message Banner ─────────────────────────────────────────────────
 function IrrigMessage({ msg }) {
   if (!msg) return null
-
-  const styles = {
-    success: {
-      bg:     'var(--color-primary-muted)',
-      border: 'rgba(0, 230, 118, 0.3)',
-      color:  'var(--color-primary)',
-    },
-    warning: {
-      bg:     'var(--color-warning-muted)',
-      border: 'rgba(255, 215, 64, 0.35)',
-      color:  'var(--color-warning)',
-    },
-    error: {
-      bg:     'var(--color-danger-muted)',
-      border: 'rgba(255, 82, 82, 0.3)',
-      color:  'var(--color-danger)',
-    },
-    info: {
-      bg:     'var(--color-surface-alt)',
-      border: 'var(--color-border-soft)',
-      color:  'var(--color-text-muted)',
-    },
+  const palette = {
+    success: { bg: 'var(--color-primary-muted)',  border: 'rgba(0,230,118,0.3)',   color: 'var(--color-primary)' },
+    warning: { bg: 'var(--color-warning-muted)',  border: 'rgba(255,215,64,0.35)', color: 'var(--color-warning)' },
+    error:   { bg: 'var(--color-danger-muted)',   border: 'rgba(255,82,82,0.3)',   color: 'var(--color-danger)'  },
+    info:    { bg: 'var(--color-surface-alt)',     border: 'var(--color-border-soft)', color: 'var(--color-text-muted)' },
   }
-
-  const s = styles[msg.type] || styles.info
-
+  const s = palette[msg.type] || palette.info
   return (
     <div style={{
-      marginTop:    'var(--space-3)',
-      padding:      'var(--space-3) var(--space-4)',
-      borderRadius: 'var(--radius-md)',
-      background:   s.bg,
-      border:       `1px solid ${s.border}`,
-      color:        s.color,
-      fontSize:     'var(--font-sm)',
-      fontWeight:   500,
-      lineHeight:   1.5,
-      animation:    'fadeIn 0.2s ease',
+      marginTop: 'var(--space-3)', padding: 'var(--space-3) var(--space-4)',
+      borderRadius: 'var(--radius-md)', background: s.bg, border: `1px solid ${s.border}`,
+      color: s.color, fontSize: 'var(--font-sm)', fontWeight: 500, lineHeight: 1.5,
+      animation: 'fadeIn 0.2s ease',
     }}>
       {msg.text}
     </div>
@@ -148,174 +134,181 @@ function IrrigMessage({ msg }) {
 function NodeDetail() {
   const { deviceId }          = useParams()
   const navigate              = useNavigate()
-  const [device, setDevice]   = useState(null)
+
+  const [device,  setDevice]  = useState(null)
   const [loading, setLoading] = useState(true)
 
-  // ── Reading request state (simple fire-and-forget) ─────────────────────────
-  const [readLoading, setReadLoading] = useState(false)
-  const [readMsg, setReadMsg]         = useState('')
+  // ── Toast ──────────────────────────────────────────────────────────────────
+  const [toast, setToast] = useState(null)   // { message, type } | null
+
+  // ── Reading request state ──────────────────────────────────────────────────
+  // 'idle' | 'pending'
+  const [readState, setReadState]     = useState('idle')
+  const readPendingRef  = useRef(false)   // mirrors readState for use inside closures
+  const readBaseTimeRef = useRef(null)    // updatedAt captured at button-press
+  const readTimerRef    = useRef(null)    // 5-min timeout handle
 
   // ── Irrigation state machine ───────────────────────────────────────────────
-  // 'idle' | 'pending' | 'offline-queued'
-  const [irrigState, setIrrigState]   = useState('idle')
-  const [irrigSecs,  setIrrigSecs]    = useState(null)  // which duration is pending
-  const [irrigMsg,   setIrrigMsg]     = useState(null)  // { text, type }
+  const [irrigState,  setIrrigState]  = useState('idle')
+  const [irrigSecs,   setIrrigSecs]   = useState(null)
+  const [irrigMsg,    setIrrigMsg]    = useState(null)
+  const irrigUnsubRef  = useRef(null)
+  const irrigTimerRef  = useRef(null)
+  const irrigCmdDocRef = useRef(null)
 
-  // Refs — avoid stale closures, no re-render cost
-  const irrigUnsubRef  = useRef(null)  // Firestore onSnapshot unsub fn
-  const irrigTimerRef  = useRef(null)  // setTimeout handle
-  const irrigCmdDocRef = useRef(null)  // Firestore DocumentReference
-
-  // ── Real-time device listener ──────────────────────────────────────────────
+  // ── Device real-time listener ──────────────────────────────────────────────
+  // This single listener also detects fresh readings arriving after a request.
   useEffect(() => {
     const unsub = onSnapshot(
       doc(db, 'devices', deviceId),
-      snap => { setDevice(snap.exists() ? { id: snap.id, ...snap.data() } : null); setLoading(false) },
-      err  => { console.error(err); setLoading(false) }
+      (snap) => {
+        const data = snap.exists() ? { id: snap.id, ...snap.data() } : null
+        setDevice(data)
+        setLoading(false)
+
+        // ── Reading detection ──────────────────────────────────────────────
+        // If a read request is pending, check whether the incoming updatedAt
+        // is strictly AFTER the baseline we captured at button-press time.
+        if (readPendingRef.current && data?.updatedAt) {
+          const newTime  = toDate(data.updatedAt)
+          const baseTime = readBaseTimeRef.current
+
+          if (newTime && baseTime && newTime > baseTime) {
+            // ✅ Fresh reading confirmed
+            clearTimeout(readTimerRef.current)
+            readTimerRef.current   = null
+            readPendingRef.current = false
+            setReadState('idle')
+            setToast({ message: '✓ Fresh readings received', type: 'success' })
+          }
+        }
+      },
+      (err) => { console.error(err); setLoading(false) }
     )
     return unsub
   }, [deviceId])
 
-  // ── Cleanup irrigation listeners on unmount ────────────────────────────────
+  // ── Global cleanup on unmount ──────────────────────────────────────────────
   useEffect(() => {
     return () => {
+      if (readTimerRef.current)   clearTimeout(readTimerRef.current)
       if (irrigUnsubRef.current)  irrigUnsubRef.current()
       if (irrigTimerRef.current)  clearTimeout(irrigTimerRef.current)
     }
   }, [])
 
-  // ── Cancel any active irrigation tracking (helper) ─────────────────────────
+  // ── Cancel irrigation tracking (helper) ───────────────────────────────────
   function cancelIrrigTracking() {
-    if (irrigUnsubRef.current)  { irrigUnsubRef.current();  irrigUnsubRef.current  = null }
-    if (irrigTimerRef.current)  { clearTimeout(irrigTimerRef.current); irrigTimerRef.current = null }
+    if (irrigUnsubRef.current) { irrigUnsubRef.current(); irrigUnsubRef.current = null }
+    if (irrigTimerRef.current) { clearTimeout(irrigTimerRef.current); irrigTimerRef.current = null }
   }
 
-  // ── Request reading (simple) ───────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════════════
+  // REQUEST READING NOW
+  // ═══════════════════════════════════════════════════════════════════════════
   async function handleReadRequest() {
-    setReadLoading(true); setReadMsg('')
-    try {
-      await api.post('/api/command', { deviceId, action: 'read' })
-      setReadMsg('📡 Reading requested')
-    } catch { setReadMsg('❌ Failed to request reading') }
-    finally {
-      setReadLoading(false)
-      setTimeout(() => setReadMsg(''), 4000)
+    if (readState === 'pending') return
+
+    const online = isOnline(device)
+
+    // ── OFFLINE PATH ──────────────────────────────────────────────────────
+    if (!online) {
+      setToast({ message: '📵 Node offline — request queued for SMS delivery', type: 'warning' })
+      // Still fire the API call so the SMS fallback can queue it
+      try { await api.post('/api/command', { deviceId, action: 'read' }) } catch {}
+      return
     }
+
+    // ── ONLINE PATH ──────────────────────────────────────────────────────
+    // Capture the current updatedAt as baseline BEFORE changing any state.
+    // We convert to a plain JS Date so it survives React re-renders without
+    // being affected by Firestore Timestamp reference changes.
+    const rawTs = device?.updatedAt
+    readBaseTimeRef.current = rawTs ? toDate(rawTs) : new Date(0)
+    readPendingRef.current  = true
+    setReadState('pending')
+
+    // Send the read command (best-effort — don't block the pending state)
+    try { await api.post('/api/command', { deviceId, action: 'read' }) } catch {}
+
+    // 5-minute timeout — if no new reading arrives, give up and inform user
+    readTimerRef.current = setTimeout(() => {
+      readPendingRef.current = false
+      setReadState('idle')
+      setToast({ message: '⏱ No response from device', type: 'warning' })
+      readTimerRef.current = null
+    }, READ_TIMEOUT_MS)
   }
 
-  // ── Irrigate ───────────────────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════════════
+  // IRRIGATION CONTROL
+  // ═══════════════════════════════════════════════════════════════════════════
   async function handleIrrigate(seconds) {
-    if (irrigState === 'pending') return  // prevent double-tap
-
+    if (irrigState === 'pending') return
     cancelIrrigTracking()
     setIrrigMsg(null)
 
     const online = isOnline(device)
 
-    // ── OFFLINE PATH ── skip pending, queue via SMS immediately
     if (!online) {
-      setIrrigMsg({
-        text: '📵 Node is offline — command queued for SMS delivery',
-        type: 'warning',
-      })
-      try {
-        await api.post('/api/command', {
-          deviceId, action: 'irrigate', payload: { durationSeconds: seconds },
-        })
-      } catch { /* SMS dispatch is best-effort */ }
+      setIrrigMsg({ text: '📵 Node is offline — command queued for SMS delivery', type: 'warning' })
+      try { await api.post('/api/command', { deviceId, action: 'irrigate', payload: { durationSeconds: seconds } }) } catch {}
       return
     }
 
-    // ── ONLINE PATH ── write to Firestore, start listener, start timer
-    // Step 1: Create the command document in Firestore (client-side)
-    // Using the 'commands/{deviceId}/queue/{autoId}' path the server uses.
-    const queueCol  = collection(db, 'commands', deviceId, 'queue')
-    const cmdDocRef = doc(queueCol)                   // auto-generated ID
+    // Write command doc to Firestore first (so listener is set before server response)
+    const cmdDocRef = doc(collection(db, 'commands', deviceId, 'queue'))
     irrigCmdDocRef.current = cmdDocRef
     const commandId = cmdDocRef.id
 
     try {
       await setDoc(cmdDocRef, {
-        deviceId,
-        action:    'irrigate',
-        payload:   { durationSeconds: seconds },
-        status:    'pending',
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
+        deviceId, action: 'irrigate', payload: { durationSeconds: seconds },
+        status: 'pending', createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
       })
-    } catch (err) {
-      console.error('Failed to write command to Firestore:', err)
-      setIrrigMsg({ text: '❌ Failed to queue command. Check your connection.', type: 'error' })
+    } catch {
+      setIrrigMsg({ text: '❌ Failed to queue command. Check connection.', type: 'error' })
       return
     }
 
-    // Step 2: Update UI to pending
     setIrrigState('pending')
     setIrrigSecs(seconds)
-    setIrrigMsg({
-      text: `💧 Irrigation (${seconds}s) sent — waiting for device acknowledgement…`,
-      type: 'info',
-    })
+    setIrrigMsg({ text: `💧 Irrigation (${seconds}s) sent — waiting for device acknowledgement…`, type: 'info' })
 
-    // Step 3: Notify backend (triggers delivery; backend also handles SMS fallback)
     try {
-      await api.post('/api/command', {
-        deviceId, commandId,
-        action:  'irrigate',
-        payload: { durationSeconds: seconds },
-      })
-    } catch {
-      // Continue — ESP32 may poll Firestore directly; don't abort the pending state
-    }
+      await api.post('/api/command', { deviceId, commandId, action: 'irrigate', payload: { durationSeconds: seconds } })
+    } catch { /* device may poll Firestore directly */ }
 
-    // Step 4: Watch for acknowledgment from ESP32 via backend → Firestore update
     const unsub = onSnapshot(cmdDocRef, snap => {
       if (!snap.exists()) return
       const { status } = snap.data()
-
       if (status === 'acknowledged') {
         cancelIrrigTracking()
-        setIrrigState('idle')
-        setIrrigSecs(null)
+        setIrrigState('idle'); setIrrigSecs(null)
         setIrrigMsg({ text: `✓ Irrigation started — running for ${seconds}s`, type: 'success' })
         setTimeout(() => setIrrigMsg(null), 8000)
       } else if (status === 'failed') {
         cancelIrrigTracking()
-        setIrrigState('idle')
-        setIrrigSecs(null)
+        setIrrigState('idle'); setIrrigSecs(null)
         setIrrigMsg({ text: '❌ Device reported command failure.', type: 'error' })
       }
     })
     irrigUnsubRef.current = unsub
 
-    // Step 5: 5-minute timeout — assume SMS fallback if no ack
     irrigTimerRef.current = setTimeout(async () => {
       cancelIrrigTracking()
       try { await updateDoc(cmdDocRef, { status: 'timeout', updatedAt: new Date() }) } catch {}
-      setIrrigState('idle')
-      setIrrigSecs(null)
-      setIrrigMsg({
-        text: '⚠ Device unreachable — command may be delivered via SMS fallback',
-        type: 'warning',
-      })
+      setIrrigState('idle'); setIrrigSecs(null)
+      setIrrigMsg({ text: '⚠ Device unreachable — command may be delivered via SMS fallback', type: 'warning' })
     }, COMMAND_TIMEOUT_MS)
   }
 
-  // ── Stop irrigation ────────────────────────────────────────────────────────
   async function handleStop() {
-    // Cancel any active pending command tracking
     cancelIrrigTracking()
-
-    // Mark the Firestore pending command as cancelled (if any)
     if (irrigState === 'pending' && irrigCmdDocRef.current) {
-      try { await updateDoc(irrigCmdDocRef.current, { status: 'cancelled', updatedAt: new Date() }) }
-      catch { /* best-effort */ }
+      try { await updateDoc(irrigCmdDocRef.current, { status: 'cancelled', updatedAt: new Date() }) } catch {}
     }
-
-    setIrrigState('idle')
-    setIrrigSecs(null)
-
-    // Send stop command
+    setIrrigState('idle'); setIrrigSecs(null)
     setIrrigMsg({ text: '⏹ Sending stop command…', type: 'info' })
     try {
       await api.post('/api/command', { deviceId, action: 'stop' })
@@ -326,7 +319,7 @@ function NodeDetail() {
     setTimeout(() => setIrrigMsg(null), 4000)
   }
 
-  // ── Loading / not-found states ─────────────────────────────────────────────
+  // ── Loading / not-found ────────────────────────────────────────────────────
   if (loading) return <div className="page-centered"><div className="spinner" /></div>
   if (!device) return (
     <div className="page">
@@ -342,7 +335,6 @@ function NodeDetail() {
   const reading = device.lastReading
   const online  = isOnline(device)
   const pct     = batteryPct(reading?.batteryMv)
-
   const moistureAlert = reading?.moisture != null
     ? reading.moisture < 25 ? 'Critically dry!' : reading.moisture > 85 ? 'Waterlogged!' : null : null
   const phAlert = reading?.ph != null
@@ -427,17 +419,31 @@ function NodeDetail() {
         </div>
       )}
 
-      {/* ── Request reading ── */}
-      <button id="request-reading-btn" className="btn btn-ghost w-full"
+      {/* ── Request Reading Now ── */}
+      <button
+        id="request-reading-btn"
+        className="btn btn-ghost w-full"
         style={{ marginBottom: 'var(--space-4)' }}
-        onClick={handleReadRequest} disabled={readLoading}>
-        {readLoading ? <><span className="spinner" style={{ width: '14px', height: '14px', borderWidth: '2px' }} /> Requesting…</> : '📡 Request Reading Now'}
+        onClick={handleReadRequest}
+        disabled={readState === 'pending'}
+        title={readState === 'pending' ? 'Waiting for fresh readings…' : 'Ask the node to send an immediate reading'}
+      >
+        {readState === 'pending'
+          ? (
+            <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+              <span className="spinner" style={{ width: '14px', height: '14px', borderWidth: '2px' }} />
+              Requesting…
+            </span>
+          )
+          : '📡 Request Reading Now'
+        }
       </button>
-      {readMsg && (
-        <p className="text-sm" style={{
-          marginTop: '-var(--space-3)', marginBottom: 'var(--space-3)',
-          color: readMsg.startsWith('❌') ? 'var(--color-danger)' : 'var(--color-primary)',
-        }}>{readMsg}</p>
+
+      {/* Pending hint text */}
+      {readState === 'pending' && (
+        <p className="text-xs text-dim" style={{ marginTop: '-var(--space-3)', marginBottom: 'var(--space-4)', textAlign: 'center' }}>
+          Waiting for device to send fresh data. Will time out in 5 minutes.
+        </p>
       )}
 
       <div className="divider" />
@@ -445,8 +451,6 @@ function NodeDetail() {
       {/* ── Irrigation Control ── */}
       <p className="section-title">Irrigation Control</p>
       <div className="card-sm" style={{ marginBottom: 'var(--space-4)' }}>
-
-        {/* Status explanation */}
         <p className="text-sm text-muted" style={{ marginBottom: 'var(--space-3)' }}>
           {irrigState === 'pending'
             ? `⏳ Waiting for device to acknowledge the ${irrigSecs}s command…`
@@ -454,41 +458,25 @@ function NodeDetail() {
               ? 'Start irrigation for a set duration, or stop the pump immediately.'
               : '📵 Device offline — commands will be queued via SMS fallback.'}
         </p>
-
-        {/* Duration + Stop buttons */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--space-2)' }}>
           {[30, 60, 120].map(s => {
             const isThisPending = irrigState === 'pending' && irrigSecs === s
-            const isDisabled    = irrigState === 'pending'
             return (
-              <button
-                key={s}
-                id={`irrigate-${s}s`}
+              <button key={s} id={`irrigate-${s}s`}
                 className={`btn btn-sm ${isThisPending ? 'btn-irrig-pending' : 'btn-primary'}`}
                 onClick={() => handleIrrigate(s)}
-                disabled={isDisabled}
-                title={isThisPending ? 'Awaiting device acknowledgement…' : `Irrigate for ${s} seconds`}
+                disabled={irrigState === 'pending'}
+                title={isThisPending ? 'Awaiting acknowledgement…' : `Irrigate for ${s}s`}
               >
                 {isThisPending ? '⏳ …' : `${s}s`}
               </button>
             )
           })}
-
-          {/* Stop — always enabled so user can abort */}
-          <button
-            id="stop-irrigation-btn"
-            className="btn btn-danger btn-sm"
-            onClick={handleStop}
-            title="Stop irrigation immediately"
-          >
+          <button id="stop-irrigation-btn" className="btn btn-danger btn-sm" onClick={handleStop}>
             Stop
           </button>
         </div>
-
-        {/* Contextual message banner */}
         <IrrigMessage msg={irrigMsg} />
-
-        {/* Timeout countdown hint (shown when pending) */}
         {irrigState === 'pending' && (
           <p className="text-xs text-dim" style={{ marginTop: 'var(--space-2)' }}>
             Will show SMS fallback warning if no response in 5 minutes.
@@ -502,6 +490,15 @@ function NodeDetail() {
         style={{ border: '1px solid var(--color-primary)', color: 'var(--color-primary)', background: 'var(--color-primary-muted)' }}>
         📊 View Analytics &amp; AI Suggestions
       </button>
+
+      {/* ── Toast notification ── */}
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onDismiss={() => setToast(null)}
+        />
+      )}
     </div>
   )
 }
