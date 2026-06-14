@@ -6,6 +6,7 @@
 
 import { Router } from 'express'
 import { db }    from '../config/firebaseAdmin.js'
+import { sms }   from '../config/africasTalking.js'
 
 const router = Router()
 
@@ -42,6 +43,26 @@ router.post('/', async (req, res, next) => {
       updatedAt: new Date(),
     }
 
+    // ── Check device online status and simNumber ─────────────────────────────
+    const deviceSnap = await db.collection('devices').doc(deviceId).get()
+    if (!deviceSnap.exists) {
+      return res.status(404).json({ error: `Device ${deviceId} not found.` })
+    }
+    const device = deviceSnap.data()
+
+    const now = Date.now()
+    const lastSeen = device.updatedAt ? device.updatedAt.toDate().getTime() : 0
+    const isOffline = (now - lastSeen) > 5 * 60 * 1000
+
+    let useSmsFallback = false
+    if (isOffline) {
+      if (!device.simNumber) {
+        return res.status(400).json({ error: 'Device offline and no SIM number configured for SMS fallback' })
+      }
+      useSmsFallback = true
+      command.status = 'sms_fallback'
+    }
+
     let docId
     if (commandId) {
       // Client pre-created the doc — update it so the server's timestamp is set
@@ -51,6 +72,39 @@ router.post('/', async (req, res, next) => {
       // Server creates the doc (legacy / non-tracked commands)
       const docRef = await queueRef(deviceId).add(command)
       docId = docRef.id
+    }
+
+    // ── Trigger SMS Fallback if needed ───────────────────────────────────────
+    if (useSmsFallback) {
+      let smsMessage = ''
+      if (action === 'irrigate') {
+        smsMessage = `CMD:IRRIGATE:${payload.duration || 30}`
+      } else if (action === 'read') {
+        smsMessage = `CMD:GET_READINGS`
+      } else {
+        smsMessage = `CMD:${action.toUpperCase()}`
+      }
+
+      try {
+        await sms.send({
+          to: [device.simNumber],
+          message: smsMessage,
+          enque: true
+        })
+        return res.status(201).json({
+          message: `Command "${action}" queued for ${deviceId}. Device offline, SMS sent.`,
+          commandId: docId,
+          status: 'sms_fallback'
+        })
+      } catch (smsError) {
+        console.error('[SMS Error]', smsError)
+        await queueRef(deviceId).doc(docId).update({
+          status: 'failed',
+          error: 'SMS fallback failed',
+          updatedAt: new Date()
+        })
+        return res.status(500).json({ error: 'Failed to send SMS fallback' })
+      }
     }
 
     return res.status(201).json({

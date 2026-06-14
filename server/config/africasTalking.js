@@ -7,9 +7,15 @@
 
 import AfricasTalking from 'africastalking'
 
+const rawEnv = process.env.AT_ENVIRONMENT || ''
+const rawUser = process.env.AT_USERNAME || ''
+const rawKey = process.env.AT_API_KEY || ''
+
+const username = rawEnv.trim() === 'sandbox' ? 'sandbox' : rawUser.trim()
+
 const credentials = {
-  apiKey:   process.env.AT_API_KEY,
-  username: process.env.AT_USERNAME,
+  apiKey:   rawKey.trim(),
+  username: username,
 }
 
 // Initialise the Africa's Talking client with your API credentials

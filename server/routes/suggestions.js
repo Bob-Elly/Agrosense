@@ -16,7 +16,7 @@ const router = Router()
 
 // Initialise the Gemini client — reads GEMINI_API_KEY from .env
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
-const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
+const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
 
 router.get('/:deviceId', async (req, res, next) => {
   try {
@@ -33,6 +33,33 @@ router.get('/:deviceId', async (req, res, next) => {
     if (!reading) {
       return res.status(404).json({
         error: 'No sensor readings available for this device yet.',
+      })
+    }
+
+    // ── 1.5 Cache Check ────────────────────────────────────────────────────────
+    const force = req.query.force === 'true'
+    const lastSuggestion = device.lastSuggestion
+    const suggestionTimestamp = device.suggestionTimestamp
+    const lastReadingAt = reading.recordedAt
+
+    let useCache = false
+    if (!force && lastSuggestion && suggestionTimestamp) {
+      const ageMs = Date.now() - new Date(suggestionTimestamp).getTime()
+      const isUnder24h = ageMs < 24 * 60 * 60 * 1000
+      const isNewerThanTelemetry = !lastReadingAt || (new Date(suggestionTimestamp) >= new Date(lastReadingAt))
+      
+      if (isUnder24h && isNewerThanTelemetry) {
+        useCache = true
+      }
+    }
+
+    if (useCache) {
+      return res.json({
+        deviceId,
+        crop: device.crop || 'unknown',
+        recommendation: lastSuggestion,
+        generatedAt: suggestionTimestamp,
+        cached: true
       })
     }
 
@@ -84,18 +111,31 @@ Based on the above, please provide:
 Guidelines:
 - Write in simple, clear language a farmer can understand without technical expertise.
 - Be practical — recommend locally available solutions (compost, lime, wood ash, etc.).
-- Keep the total response under 200 words.`
+- Keep the total response under 200 words.
+- Do NOT use markdown formatting like asterisks or bold text. Use plain text only.`
 
     // ── 4. Call the Gemini API ────────────────────────────────────────────────
     const result         = await model.generateContent(prompt)
-    const recommendation = result.response.text()
+    let recommendation   = result.response.text()
+
+    // Strip any remaining markdown asterisks just in case
+    recommendation = recommendation.replace(/\*/g, '')
+
+    const newTimestamp = new Date().toISOString()
+
+    // ── 4.5 Save to Cache ────────────────────────────────────────────────────
+    await db.collection('devices').doc(deviceId).update({
+      lastSuggestion: recommendation,
+      suggestionTimestamp: newTimestamp
+    })
 
     // ── 5. Return the result ─────────────────────────────────────────────────
     return res.json({
       deviceId,
       crop,
       recommendation,
-      generatedAt: new Date().toISOString(),
+      generatedAt: newTimestamp,
+      cached: false
     })
   } catch (err) {
     console.error('[Gemini Error]', err?.message || err)

@@ -19,8 +19,16 @@ function Analytics() {
   const [aiError, setAiError]       = useState('')
 
   useEffect(() => {
-    if (deviceId) fetchHistory()
+    if (deviceId) {
+      fetchHistory()
+    }
   }, [deviceId, limit]) // eslint-disable-line
+
+  useEffect(() => {
+    if (deviceId) {
+      fetchSuggestions(false)
+    }
+  }, [deviceId]) // eslint-disable-line
 
   async function fetchHistory() {
     setHistLoading(true); setHistError('')
@@ -31,10 +39,11 @@ function Analytics() {
     finally { setHistLoading(false) }
   }
 
-  async function fetchSuggestions() {
-    setAiLoading(true); setAiError(''); setSuggestion(null)
+  async function fetchSuggestions(force = false) {
+    setAiLoading(true); setAiError(''); 
+    if (force) setSuggestion(null)
     try {
-      const res = await api.get(`/api/suggestions/${deviceId}`)
+      const res = await api.get(`/api/suggestions/${deviceId}${force ? '?force=true' : ''}`)
       setSuggestion(res.data)
     } catch (err) {
       setAiError(err.response?.data?.error || 'Failed to generate suggestions. Ensure GEMINI_API_KEY is set in server/.env')
@@ -43,6 +52,17 @@ function Analytics() {
 
   const v    = (val, d = 1) => val != null ? Number(val).toFixed(d) : '—'
   const fmtT = ts => { try { return new Date(ts).toLocaleString() } catch { return '—' } }
+  
+  const timeAgo = (ts) => {
+    if (!ts) return '';
+    const diff = Math.max(0, Date.now() - new Date(ts).getTime());
+    const h = Math.floor(diff / 3600000);
+    const m = Math.floor(diff / 60000);
+    if (h >= 24) return `${Math.floor(h/24)} days ago`;
+    if (h >= 1) return `${h} hour${h>1?'s':''} ago`;
+    if (m >= 1) return `${m} minute${m>1?'s':''} ago`;
+    return 'Just now';
+  }
 
   return (
     <div className="page">
@@ -67,7 +87,7 @@ function Analytics() {
               and optimal ranges for your selected crop.
             </p>
             <button id="get-suggestions-btn" className="btn btn-primary w-full"
-              onClick={fetchSuggestions} disabled={aiLoading}>
+              onClick={() => fetchSuggestions(true)} disabled={aiLoading}>
               ✨ Generate AI Suggestions
             </button>
           </>
@@ -83,7 +103,7 @@ function Analytics() {
         {aiError && (
           <div>
             <p className="error-message">{aiError}</p>
-            <button className="btn btn-ghost btn-sm" style={{ marginTop: 'var(--space-3)' }} onClick={fetchSuggestions}>
+            <button className="btn btn-ghost btn-sm" style={{ marginTop: 'var(--space-3)' }} onClick={() => fetchSuggestions(true)}>
               Try again
             </button>
           </div>
@@ -95,11 +115,11 @@ function Analytics() {
               <div>
                 <p className="text-xs text-muted">Crop: <strong className="text-primary">{suggestion.crop}</strong></p>
                 <p className="text-xs text-dim" style={{ marginTop: '2px' }}>
-                  Generated {new Date(suggestion.generatedAt).toLocaleTimeString()}
+                  Generated {timeAgo(suggestion.generatedAt)}
                 </p>
               </div>
               <button id="refresh-suggestions-btn" className="btn btn-ghost btn-sm"
-                onClick={fetchSuggestions} disabled={aiLoading}>Refresh</button>
+                onClick={() => fetchSuggestions(true)} disabled={aiLoading}>Refresh</button>
             </div>
 
             {/* AI response text */}
