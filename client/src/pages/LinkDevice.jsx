@@ -1,13 +1,12 @@
 // client/src/pages/LinkDevice.jsx
 // ─────────────────────────────────────────────────────────────────────────────
 // Manage Nodes page.
-//   • Top section  — list of existing nodes with a Remove button on each
-//   • Bottom section — form to add a new node (device ID, label, crop)
-//
-// Deleting a node:
-//   1. Removes the device document from Firestore "devices" collection
-//   2. Removes the device ID from the user's "users/{uid}/devices" array
-//   3. The Dashboard's onSnapshot listener picks up the change in real-time
+//   • Lists all linked nodes in real-time (onSnapshot)
+//   • Each node has [Edit] and [🗑 Remove] buttons
+//   • Edit opens EditNodeModal → updateDoc → instant dashboard update
+//   • Remove opens ConfirmDialog → deleteDoc + arrayRemove
+//   • Add New Node form at the bottom
+//   • Success/error feedback via Toast component
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect } from 'react'
@@ -22,6 +21,8 @@ import { db }                          from '../firebase.js'
 import { useAuth }                     from '../context/AuthContext.jsx'
 import ThemeToggle                     from '../components/ThemeToggle.jsx'
 import ConfirmDialog                   from '../components/ConfirmDialog.jsx'
+import EditNodeModal                   from '../components/EditNodeModal.jsx'
+import Toast                           from '../components/Toast.jsx'
 
 // ── Crop options ──────────────────────────────────────────────────────────────
 const CROPS = [
@@ -42,43 +43,90 @@ function isOnline(device) {
   return (Date.now() - last.getTime()) < 30 * 60 * 1000
 }
 
+// ── Small action button ───────────────────────────────────────────────────────
+function ActionBtn({ id, onClick, color, bg, border, hoverBg, children }) {
+  const [hovered, setHovered] = useState(false)
+  return (
+    <button
+      id={id}
+      onClick={onClick}
+      style={{
+        flexShrink:   0,
+        background:   hovered ? hoverBg : bg,
+        border:       `1px solid ${border}`,
+        borderRadius: 'var(--radius-sm)',
+        color,
+        fontSize:     'var(--font-xs)',
+        fontWeight:   600,
+        padding:      '0.35rem 0.65rem',
+        cursor:       'pointer',
+        transition:   'background var(--transition)',
+        whiteSpace:   'nowrap',
+      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      {children}
+    </button>
+  )
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Main Component
+// ═════════════════════════════════════════════════════════════════════════════
 function LinkDevice() {
   const { currentUser }           = useAuth()
   const navigate                  = useNavigate()
 
   // ── Existing nodes ────────────────────────────────────────────────────────
-  const [devices, setDevices]     = useState([])
+  const [devices, setDevices]         = useState([])
   const [nodesLoading, setNodesLoading] = useState(true)
 
+  // ── Edit modal ────────────────────────────────────────────────────────────
+  const [editDevice, setEditDevice]   = useState(null)   // device obj or null
+
   // ── Delete confirmation ───────────────────────────────────────────────────
-  const [confirmOpen, setConfirmOpen]   = useState(false)
-  const [targetDevice, setTargetDevice] = useState(null)   // { deviceId, label }
+  const [confirmOpen, setConfirmOpen]     = useState(false)
+  const [targetDevice, setTargetDevice]   = useState(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
-  const [deleteError, setDeleteError]   = useState('')
+  const [deleteError, setDeleteError]     = useState('')
+
+  // ── Toast ─────────────────────────────────────────────────────────────────
+  const [toast, setToast] = useState(null)   // { message, type } or null
 
   // ── Add node form ─────────────────────────────────────────────────────────
-  const [deviceId, setDeviceId]   = useState('')
-  const [label, setLabel]         = useState('')
-  const [crop, setCrop]           = useState('')
-  const [addError, setAddError]   = useState('')
-  const [addSuccess, setAddSuccess] = useState('')
+  const [deviceId, setDeviceId]     = useState('')
+  const [label, setLabel]           = useState('')
+  const [crop, setCrop]             = useState('')
+  const [addError, setAddError]     = useState('')
   const [addLoading, setAddLoading] = useState(false)
 
-  // ── Real-time listener for this user's devices ────────────────────────────
+  // ── Real-time listener ────────────────────────────────────────────────────
   useEffect(() => {
     if (!currentUser) return
     const q = query(
       collection(db, 'devices'),
       where('owner', '==', currentUser.uid)
     )
-    const unsub = onSnapshot(q, snap => {
-      setDevices(snap.docs.map(d => ({ id: d.id, ...d.data() })))
-      setNodesLoading(false)
-    }, err => { console.error(err); setNodesLoading(false) })
+    const unsub = onSnapshot(
+      q,
+      snap => { setDevices(snap.docs.map(d => ({ id: d.id, ...d.data() }))); setNodesLoading(false) },
+      err  => { console.error(err); setNodesLoading(false) }
+    )
     return unsub
   }, [currentUser])
 
-  // ── Delete node ───────────────────────────────────────────────────────────
+  // ── Edit handlers ─────────────────────────────────────────────────────────
+  function openEdit(device) {
+    setEditDevice(device)
+  }
+
+  function handleSaved(message) {
+    setEditDevice(null)
+    setToast({ message, type: 'success' })
+  }
+
+  // ── Delete handlers ───────────────────────────────────────────────────────
   function promptDelete(device) {
     setTargetDevice(device)
     setDeleteError('')
@@ -91,17 +139,11 @@ function LinkDevice() {
     setDeleteError('')
     try {
       const id = targetDevice.deviceId || targetDevice.id
-
-      // 1. Delete the device document
       await deleteDoc(doc(db, 'devices', id))
-
-      // 2. Remove from the user's devices array
-      await updateDoc(doc(db, 'users', currentUser.uid), {
-        devices: arrayRemove(id),
-      })
-
+      await updateDoc(doc(db, 'users', currentUser.uid), { devices: arrayRemove(id) })
       setConfirmOpen(false)
       setTargetDevice(null)
+      setToast({ message: 'Node removed successfully.', type: 'success' })
     } catch (err) {
       console.error('Delete failed:', err)
       setDeleteError('Failed to remove node. Please try again.')
@@ -110,17 +152,15 @@ function LinkDevice() {
     }
   }
 
-  // ── Add new node ──────────────────────────────────────────────────────────
+  // ── Add node handler ──────────────────────────────────────────────────────
   async function handleLink(e) {
     e.preventDefault()
-    setAddError(''); setAddSuccess('')
+    setAddError('')
     const trimmedId = deviceId.trim()
     if (!trimmedId) return setAddError('Please enter a device ID.')
     setAddLoading(true)
     try {
-      await updateDoc(doc(db, 'users', currentUser.uid), {
-        devices: arrayUnion(trimmedId),
-      })
+      await updateDoc(doc(db, 'users', currentUser.uid), { devices: arrayUnion(trimmedId) })
       await setDoc(
         doc(db, 'devices', trimmedId),
         {
@@ -133,13 +173,19 @@ function LinkDevice() {
         },
         { merge: true }
       )
-      setAddSuccess(`✅ "${label.trim() || trimmedId}" linked successfully!`)
+      setToast({ message: `"${label.trim() || trimmedId}" linked successfully!`, type: 'success' })
       setDeviceId(''); setLabel(''); setCrop('')
     } catch (err) {
-      console.error(err); setAddError('Failed to link device. Please try again.')
-    } finally { setAddLoading(false) }
+      console.error(err)
+      setAddError('Failed to link device. Please try again.')
+    } finally {
+      setAddLoading(false)
+    }
   }
 
+  // ═════════════════════════════════════════════════════════════════════════
+  // Render
+  // ═════════════════════════════════════════════════════════════════════════
   return (
     <div className="page">
       {/* ── Header ── */}
@@ -149,13 +195,13 @@ function LinkDevice() {
         </button>
         <div style={{ flex: 1 }}>
           <h1 style={{ fontSize: 'var(--font-xl)', fontWeight: 700 }}>Manage Nodes</h1>
-          <p className="text-xs text-muted">Add or remove your ESP32 sensor nodes</p>
+          <p className="text-xs text-muted">Add, edit, or remove your ESP32 sensor nodes</p>
         </div>
         <ThemeToggle />
       </header>
 
       {/* ══════════════════════════════════════════════════════════════════════
-          EXISTING NODES
+          EXISTING NODES LIST
          ══════════════════════════════════════════════════════════════════ */}
       <p className="section-title">Linked Nodes</p>
 
@@ -183,50 +229,69 @@ function LinkDevice() {
                   borderLeft:   '3px solid var(--color-primary)',
                   borderRadius: 'var(--radius-lg)',
                   padding:      'var(--space-4)',
-                  display:      'flex',
-                  alignItems:   'center',
-                  gap:          'var(--space-3)',
                   boxShadow:    'var(--shadow-card)',
                 }}
               >
-                {/* Status dot */}
-                <span className={`dot ${online ? 'dot-online' : 'dot-offline'}`}
-                  style={{ flexShrink: 0 }} />
+                {/* Top row: dot + name + buttons */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+                  {/* Status dot */}
+                  <span className={`dot ${online ? 'dot-online' : 'dot-offline'}`} style={{ flexShrink: 0 }} />
 
-                {/* Node info */}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ fontWeight: 600, fontSize: 'var(--font-md)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {device.label || id}
-                  </p>
-                  <p className="text-xs text-dim" style={{ marginTop: '2px' }}>
-                    {id}
-                    {device.crop ? <> &middot; 🌿 {device.crop}</> : null}
-                  </p>
+                  {/* Node info */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontWeight: 600, fontSize: 'var(--font-md)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {device.label || id}
+                    </p>
+                    <p className="text-xs text-dim" style={{ marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {id}
+                    </p>
+                  </div>
+
+                  {/* Action buttons */}
+                  <div style={{ display: 'flex', gap: 'var(--space-2)', flexShrink: 0 }}>
+                    {/* Edit */}
+                    <ActionBtn
+                      id={`edit-node-${id}`}
+                      onClick={() => openEdit(device)}
+                      color="var(--color-primary)"
+                      bg="var(--color-primary-muted)"
+                      border="rgba(0, 230, 118, 0.25)"
+                      hoverBg="rgba(0, 230, 118, 0.18)"
+                    >
+                      ✏️ Edit
+                    </ActionBtn>
+                    {/* Remove */}
+                    <ActionBtn
+                      id={`remove-node-${id}`}
+                      onClick={() => promptDelete(device)}
+                      color="var(--color-danger)"
+                      bg="var(--color-danger-muted)"
+                      border="rgba(255,82,82,0.25)"
+                      hoverBg="rgba(255,82,82,0.18)"
+                    >
+                      🗑 Remove
+                    </ActionBtn>
+                  </div>
                 </div>
 
-                {/* Remove button */}
-                <button
-                  id={`remove-node-${id}`}
-                  onClick={() => promptDelete(device)}
-                  title="Remove this node"
-                  style={{
-                    flexShrink:   0,
-                    background:   'var(--color-danger-muted)',
-                    border:       '1px solid rgba(255,82,82,0.25)',
-                    borderRadius: 'var(--radius-sm)',
-                    color:        'var(--color-danger)',
-                    fontSize:     'var(--font-xs)',
-                    fontWeight:   600,
-                    padding:      '0.35rem 0.65rem',
-                    cursor:       'pointer',
-                    transition:   'background var(--transition)',
-                    whiteSpace:   'nowrap',
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,82,82,0.2)'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'var(--color-danger-muted)'}
-                >
-                  🗑 Remove
-                </button>
+                {/* Meta row: crop + SIM */}
+                {(device.crop || device.simNumber) && (
+                  <div style={{
+                    marginTop:    'var(--space-3)',
+                    paddingTop:   'var(--space-2)',
+                    borderTop:    '1px solid var(--color-border-soft)',
+                    display:      'flex',
+                    gap:          'var(--space-4)',
+                    flexWrap:     'wrap',
+                  }}>
+                    {device.crop && (
+                      <span className="text-xs text-muted">🌿 {device.crop}</span>
+                    )}
+                    {device.simNumber && (
+                      <span className="text-xs text-muted">📱 {device.simNumber}</span>
+                    )}
+                  </div>
+                )}
               </div>
             )
           })}
@@ -255,14 +320,12 @@ function LinkDevice() {
               The unique ID programmed into your ESP32 firmware.
             </p>
           </div>
-
           <div className="form-group">
-            <label className="label" htmlFor="device-label">Friendly Name (optional)</label>
+            <label className="label" htmlFor="device-label">Nickname (optional)</label>
             <input id="device-label" className="input" type="text"
               placeholder="e.g. Field A – North Plot"
               value={label} onChange={e => setLabel(e.target.value)} />
           </div>
-
           <div className="form-group">
             <label className="label" htmlFor="device-crop">Crop (optional)</label>
             <div style={{ position: 'relative' }}>
@@ -272,20 +335,9 @@ function LinkDevice() {
               </select>
               <span style={{ position: 'absolute', right: '0.875rem', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--color-text-muted)', fontSize: '0.7rem' }}>▼</span>
             </div>
-            <p className="text-xs text-dim" style={{ marginTop: '0.3rem' }}>
-              Used to calibrate AI crop suggestions.
-            </p>
           </div>
 
-          {addError   && <p className="error-message">{addError}</p>}
-          {addSuccess && (
-            <p style={{
-              color: 'var(--color-primary)', fontSize: 'var(--font-sm)',
-              marginBottom: 'var(--space-3)', padding: 'var(--space-3) var(--space-4)',
-              background: 'var(--color-primary-muted)', borderRadius: 'var(--radius-md)',
-              border: '1px solid rgba(0,230,118,0.2)',
-            }}>{addSuccess}</p>
-          )}
+          {addError && <p className="error-message">{addError}</p>}
 
           <button id="link-device-submit" className="btn btn-primary w-full"
             type="submit" disabled={addLoading} style={{ marginTop: 'var(--space-2)' }}>
@@ -299,19 +351,39 @@ function LinkDevice() {
         ← Go to Dashboard
       </button>
 
-      {/* ── Delete confirmation dialog ── */}
+      {/* ── Modals & notifications ── */}
+
+      {/* Edit node modal */}
+      {editDevice && (
+        <EditNodeModal
+          device={editDevice}
+          onClose={() => setEditDevice(null)}
+          onSaved={handleSaved}
+        />
+      )}
+
+      {/* Delete confirmation */}
       <ConfirmDialog
         isOpen={confirmOpen}
         title="Remove Node?"
         message={
           targetDevice
-            ? `"${targetDevice.label || targetDevice.deviceId || targetDevice.id}" will be unlinked from your account. Historical data in Firestore will also be removed.`
+            ? `"${targetDevice.label || targetDevice.deviceId || targetDevice.id}" will be unlinked. Historical sensor data in Firestore will also be removed.`
             : ''
         }
         confirmLabel={deleteLoading ? 'Removing…' : 'Remove Node'}
         onConfirm={handleDeleteConfirm}
         onCancel={() => { setConfirmOpen(false); setTargetDevice(null) }}
       />
+
+      {/* Success / error toast */}
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onDismiss={() => setToast(null)}
+        />
+      )}
     </div>
   )
 }

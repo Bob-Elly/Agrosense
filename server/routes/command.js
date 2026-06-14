@@ -1,17 +1,7 @@
 // server/routes/command.js
 // ─────────────────────────────────────────────────────────────────────────────
-// POST /api/command
-//
-// Sends a control command to a specific ESP32 device.
-// The command is written to Firestore; the device polls this document
-// on its next cellular check-in and acts on pending commands.
-//
-// Expected JSON body:
-//   {
-//     "deviceId": "esp32-node-01",
-//     "action":   "irrigate",    // e.g. "irrigate" | "stop" | "reboot"
-//     "payload":  { "durationSeconds": 120 }  // optional action-specific data
-//   }
+// POST /api/command       — queue a command for an ESP32 device
+// POST /api/command/ack   — ESP32 firmware calls this to confirm execution
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { Router } from 'express'
@@ -19,23 +9,27 @@ import { db }    from '../config/firebaseAdmin.js'
 
 const router = Router()
 
-// Allowed command actions — extend this list as your firmware supports more
-const VALID_ACTIONS = ['irrigate', 'stop', 'reboot', 'sleep', 'calibrate']
+// Allowed command actions
+const VALID_ACTIONS = ['irrigate', 'stop', 'reboot', 'sleep', 'calibrate', 'read']
 
+// ── Helper: get the queue ref for a device ────────────────────────────────────
+const queueRef = (deviceId) =>
+  db.collection('commands').doc(deviceId).collection('queue')
+
+// ── POST /api/command ─────────────────────────────────────────────────────────
+// If the client passes a `commandId`, it means the client pre-created the
+// Firestore document (so it could start listening before the server responds).
+// The server then writes to that specific document instead of creating a new one.
 router.post('/', async (req, res, next) => {
   try {
-    const { deviceId, action, payload = {} } = req.body
+    const { deviceId, commandId, action, payload = {} } = req.body
 
-    // Validate required fields
     if (!deviceId || !action) {
-      return res.status(400).json({
-        error: 'deviceId and action are required.',
-      })
+      return res.status(400).json({ error: 'deviceId and action are required.' })
     }
-
     if (!VALID_ACTIONS.includes(action)) {
       return res.status(400).json({
-        error: `Invalid action. Must be one of: ${VALID_ACTIONS.join(', ')}`,
+        error: `Invalid action. Allowed: ${VALID_ACTIONS.join(', ')}`,
       })
     }
 
@@ -43,22 +37,64 @@ router.post('/', async (req, res, next) => {
       deviceId,
       action,
       payload,
-      status:    'pending',  // device updates this to "ack" or "done"
+      status:    'pending',
       createdAt: new Date(),
       updatedAt: new Date(),
     }
 
-    // Write the command to Firestore under commands/{deviceId}/queue/{auto-id}
-    // The ESP32 reads from this sub-collection when it connects
-    const docRef = await db
-      .collection('commands')
-      .doc(deviceId)
-      .collection('queue')
-      .add(command)
+    let docId
+    if (commandId) {
+      // Client pre-created the doc — update it so the server's timestamp is set
+      await queueRef(deviceId).doc(commandId).set(command, { merge: true })
+      docId = commandId
+    } else {
+      // Server creates the doc (legacy / non-tracked commands)
+      const docRef = await queueRef(deviceId).add(command)
+      docId = docRef.id
+    }
 
     return res.status(201).json({
-      message:   `Command "${action}" queued for device ${deviceId}.`,
-      commandId: docRef.id,
+      message:   `Command "${action}" queued for ${deviceId}.`,
+      commandId: docId,
+    })
+  } catch (err) {
+    next(err)
+  }
+})
+
+// ── POST /api/command/ack ─────────────────────────────────────────────────────
+// Called by the ESP32 firmware over GSM after it has executed (or failed) a
+// command. Updates the Firestore command document status, which the client's
+// onSnapshot listener picks up in real-time.
+//
+// Expected JSON body:
+//   {
+//     "deviceId":   "esp32-node-01",
+//     "commandId":  "<Firestore doc ID>",
+//     "success":     true              // optional, default true
+//   }
+router.post('/ack', async (req, res, next) => {
+  try {
+    const { deviceId, commandId, success = true } = req.body
+
+    if (!deviceId || !commandId) {
+      return res.status(400).json({ error: 'deviceId and commandId are required.' })
+    }
+
+    const newStatus = success ? 'acknowledged' : 'failed'
+
+    await queueRef(deviceId).doc(commandId).update({
+      status:          newStatus,
+      acknowledgedAt:  new Date(),
+      updatedAt:       new Date(),
+    })
+
+    console.log(`[ACK] Device: ${deviceId} | Command: ${commandId} | Status: ${newStatus}`)
+
+    return res.json({
+      success:   true,
+      commandId,
+      status:    newStatus,
     })
   } catch (err) {
     next(err)

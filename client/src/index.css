@@ -451,6 +451,20 @@ select { font-family: inherit; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* Irrigation button — pending state (pulsing while awaiting ESP32 ack) */
+.btn-irrig-pending {
+  background:  var(--color-surface-alt) !important;
+  color:       var(--color-primary) !important;
+  border:      1px dashed var(--color-primary-dim) !important;
+  cursor:      not-allowed;
+  animation:   irrigPulse 1.3s ease-in-out infinite;
+  box-shadow:  none !important;
+}
+@keyframes irrigPulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
 /* ══════════════════════════════════════════════════════════════════════════════
    FALLING FLOWERS ANIMATION
    ══════════════════════════════════════════════════════════════════════════ */
@@ -470,6 +484,12 @@ select { font-family: inherit; }
 /* Dialog entry animations */
 @keyframes fadeIn  { from { opacity: 0 } to { opacity: 1 } }
 @keyframes slideUp { from { transform: translateY(12px); opacity: 0 } to { transform: translateY(0); opacity: 1 } }
+
+/* Toast slide-up with spring bounce */
+@keyframes toastIn {
+  from { transform: translateX(-50%) translateY(16px); opacity: 0; }
+  to   { transform: translateX(-50%) translateY(0);    opacity: 1; }
+}
 
 /* ── Table ───────────────────────────────────────────────────────────────── */
 .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }

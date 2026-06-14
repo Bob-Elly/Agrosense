@@ -1,13 +1,28 @@
 // client/src/pages/NodeDetail.jsx
-// Real-time sensor readings, irrigation controls for a single ESP32 node.
+// ─────────────────────────────────────────────────────────────────────────────
+// Node Detail page — real-time sensor readings + advanced irrigation control.
 // Route: /node/:deviceId
+//
+// Irrigation control state machine:
+//   idle → pending (Firestore listener + 5-min timeout) → idle (on ack)
+//                                                       → idle (on timeout)
+//   idle → offline message (if device is offline when button tapped)
+// ─────────────────────────────────────────────────────────────────────────────
 
-import React, { useEffect, useState } from 'react'
-import { useParams, useNavigate }      from 'react-router-dom'
-import { doc, onSnapshot }             from 'firebase/firestore'
-import { db }                          from '../firebase.js'
-import api                             from '../api/axiosInstance.js'
-import ThemeToggle                     from '../components/ThemeToggle.jsx'
+import React, { useEffect, useState, useRef } from 'react'
+import { useParams, useNavigate }             from 'react-router-dom'
+import {
+  doc, onSnapshot,
+  collection, setDoc, updateDoc,
+  serverTimestamp,
+}                                             from 'firebase/firestore'
+import { db }                                 from '../firebase.js'
+import api                                    from '../api/axiosInstance.js'
+import ThemeToggle                            from '../components/ThemeToggle.jsx'
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+// How long to wait for an ESP32 acknowledgment before showing the SMS warning
+const COMMAND_TIMEOUT_MS = 5 * 60 * 1000  // 5 minutes
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function timeAgo(timestamp) {
@@ -46,7 +61,7 @@ function SignalBars({ rssi }) {
         <div key={i} style={{
           width: '5px', height: `${h}px`, borderRadius: '2px',
           background: i < level ? 'var(--color-primary)' : 'var(--color-border)',
-          boxShadow: i < level ? '0 0 4px var(--color-primary-glow)' : 'none',
+          boxShadow:  i < level ? '0 0 4px var(--color-primary-glow)' : 'none',
           transition: 'background 0.3s',
         }} />
       ))}
@@ -58,25 +73,18 @@ function SignalBars({ rssi }) {
 // ── Sensor Card ───────────────────────────────────────────────────────────────
 function SensorCard({ icon, label, value, unit, color, alert, span }) {
   return (
-    <div
-      className="sensor-card"
-      style={{
-        gridColumn: span ? '1 / -1' : undefined,
-        borderColor: alert ? 'rgba(255,82,82,0.3)' : undefined,
-        boxShadow: color
-          ? `var(--shadow-sm), inset 0 1px 0 ${color}18`
-          : undefined,
-      }}
-    >
+    <div className="sensor-card" style={{
+      gridColumn: span ? '1 / -1' : undefined,
+      borderColor: alert ? 'rgba(255,82,82,0.3)' : undefined,
+      boxShadow: color ? `var(--shadow-sm), inset 0 1px 0 ${color}18` : undefined,
+    }}>
       <span className="sensor-card__icon">{icon}</span>
       <span className="sensor-card__label">{label}</span>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
         <span className="sensor-card__value" style={{ color: color || 'var(--color-text)' }}>
           {value != null ? value : '—'}
         </span>
-        {value != null && unit && (
-          <span className="sensor-card__unit">{unit}</span>
-        )}
+        {value != null && unit && <span className="sensor-card__unit">{unit}</span>}
       </div>
       {alert && (
         <span style={{ fontSize: 'var(--font-xs)', color: 'var(--color-danger)', marginTop: '2px', fontWeight: 600 }}>
@@ -87,15 +95,78 @@ function SensorCard({ icon, label, value, unit, color, alert, span }) {
   )
 }
 
-// ── Main ──────────────────────────────────────────────────────────────────────
-function NodeDetail() {
-  const { deviceId }            = useParams()
-  const navigate                = useNavigate()
-  const [device, setDevice]     = useState(null)
-  const [loading, setLoading]   = useState(true)
-  const [cmdLoading, setCmdLoading] = useState(false)
-  const [cmdMsg, setCmdMsg]     = useState('')
+// ── Irrigation Message Banner ─────────────────────────────────────────────────
+function IrrigMessage({ msg }) {
+  if (!msg) return null
 
+  const styles = {
+    success: {
+      bg:     'var(--color-primary-muted)',
+      border: 'rgba(0, 230, 118, 0.3)',
+      color:  'var(--color-primary)',
+    },
+    warning: {
+      bg:     'var(--color-warning-muted)',
+      border: 'rgba(255, 215, 64, 0.35)',
+      color:  'var(--color-warning)',
+    },
+    error: {
+      bg:     'var(--color-danger-muted)',
+      border: 'rgba(255, 82, 82, 0.3)',
+      color:  'var(--color-danger)',
+    },
+    info: {
+      bg:     'var(--color-surface-alt)',
+      border: 'var(--color-border-soft)',
+      color:  'var(--color-text-muted)',
+    },
+  }
+
+  const s = styles[msg.type] || styles.info
+
+  return (
+    <div style={{
+      marginTop:    'var(--space-3)',
+      padding:      'var(--space-3) var(--space-4)',
+      borderRadius: 'var(--radius-md)',
+      background:   s.bg,
+      border:       `1px solid ${s.border}`,
+      color:        s.color,
+      fontSize:     'var(--font-sm)',
+      fontWeight:   500,
+      lineHeight:   1.5,
+      animation:    'fadeIn 0.2s ease',
+    }}>
+      {msg.text}
+    </div>
+  )
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Main Component
+// ═════════════════════════════════════════════════════════════════════════════
+function NodeDetail() {
+  const { deviceId }          = useParams()
+  const navigate              = useNavigate()
+  const [device, setDevice]   = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  // ── Reading request state (simple fire-and-forget) ─────────────────────────
+  const [readLoading, setReadLoading] = useState(false)
+  const [readMsg, setReadMsg]         = useState('')
+
+  // ── Irrigation state machine ───────────────────────────────────────────────
+  // 'idle' | 'pending' | 'offline-queued'
+  const [irrigState, setIrrigState]   = useState('idle')
+  const [irrigSecs,  setIrrigSecs]    = useState(null)  // which duration is pending
+  const [irrigMsg,   setIrrigMsg]     = useState(null)  // { text, type }
+
+  // Refs — avoid stale closures, no re-render cost
+  const irrigUnsubRef  = useRef(null)  // Firestore onSnapshot unsub fn
+  const irrigTimerRef  = useRef(null)  // setTimeout handle
+  const irrigCmdDocRef = useRef(null)  // Firestore DocumentReference
+
+  // ── Real-time device listener ──────────────────────────────────────────────
   useEffect(() => {
     const unsub = onSnapshot(
       doc(db, 'devices', deviceId),
@@ -105,18 +176,158 @@ function NodeDetail() {
     return unsub
   }, [deviceId])
 
-  async function sendCommand(action, payload = {}) {
-    setCmdLoading(true); setCmdMsg('')
-    try {
-      await api.post('/api/command', { deviceId, action, payload })
-      const labels = { irrigate: `💧 Irrigating for ${payload.durationSeconds}s`, stop: '⏹ Stop command sent', read: '📡 Reading requested' }
-      setCmdMsg(labels[action] || `✅ "${action}" sent`)
-    } catch { setCmdMsg('❌ Failed. Check connection.') }
-    finally { setCmdLoading(false); setTimeout(() => setCmdMsg(''), 4000) }
+  // ── Cleanup irrigation listeners on unmount ────────────────────────────────
+  useEffect(() => {
+    return () => {
+      if (irrigUnsubRef.current)  irrigUnsubRef.current()
+      if (irrigTimerRef.current)  clearTimeout(irrigTimerRef.current)
+    }
+  }, [])
+
+  // ── Cancel any active irrigation tracking (helper) ─────────────────────────
+  function cancelIrrigTracking() {
+    if (irrigUnsubRef.current)  { irrigUnsubRef.current();  irrigUnsubRef.current  = null }
+    if (irrigTimerRef.current)  { clearTimeout(irrigTimerRef.current); irrigTimerRef.current = null }
   }
 
-  if (loading) return <div className="page-centered"><div className="spinner" /></div>
+  // ── Request reading (simple) ───────────────────────────────────────────────
+  async function handleReadRequest() {
+    setReadLoading(true); setReadMsg('')
+    try {
+      await api.post('/api/command', { deviceId, action: 'read' })
+      setReadMsg('📡 Reading requested')
+    } catch { setReadMsg('❌ Failed to request reading') }
+    finally {
+      setReadLoading(false)
+      setTimeout(() => setReadMsg(''), 4000)
+    }
+  }
 
+  // ── Irrigate ───────────────────────────────────────────────────────────────
+  async function handleIrrigate(seconds) {
+    if (irrigState === 'pending') return  // prevent double-tap
+
+    cancelIrrigTracking()
+    setIrrigMsg(null)
+
+    const online = isOnline(device)
+
+    // ── OFFLINE PATH ── skip pending, queue via SMS immediately
+    if (!online) {
+      setIrrigMsg({
+        text: '📵 Node is offline — command queued for SMS delivery',
+        type: 'warning',
+      })
+      try {
+        await api.post('/api/command', {
+          deviceId, action: 'irrigate', payload: { durationSeconds: seconds },
+        })
+      } catch { /* SMS dispatch is best-effort */ }
+      return
+    }
+
+    // ── ONLINE PATH ── write to Firestore, start listener, start timer
+    // Step 1: Create the command document in Firestore (client-side)
+    // Using the 'commands/{deviceId}/queue/{autoId}' path the server uses.
+    const queueCol  = collection(db, 'commands', deviceId, 'queue')
+    const cmdDocRef = doc(queueCol)                   // auto-generated ID
+    irrigCmdDocRef.current = cmdDocRef
+    const commandId = cmdDocRef.id
+
+    try {
+      await setDoc(cmdDocRef, {
+        deviceId,
+        action:    'irrigate',
+        payload:   { durationSeconds: seconds },
+        status:    'pending',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      })
+    } catch (err) {
+      console.error('Failed to write command to Firestore:', err)
+      setIrrigMsg({ text: '❌ Failed to queue command. Check your connection.', type: 'error' })
+      return
+    }
+
+    // Step 2: Update UI to pending
+    setIrrigState('pending')
+    setIrrigSecs(seconds)
+    setIrrigMsg({
+      text: `💧 Irrigation (${seconds}s) sent — waiting for device acknowledgement…`,
+      type: 'info',
+    })
+
+    // Step 3: Notify backend (triggers delivery; backend also handles SMS fallback)
+    try {
+      await api.post('/api/command', {
+        deviceId, commandId,
+        action:  'irrigate',
+        payload: { durationSeconds: seconds },
+      })
+    } catch {
+      // Continue — ESP32 may poll Firestore directly; don't abort the pending state
+    }
+
+    // Step 4: Watch for acknowledgment from ESP32 via backend → Firestore update
+    const unsub = onSnapshot(cmdDocRef, snap => {
+      if (!snap.exists()) return
+      const { status } = snap.data()
+
+      if (status === 'acknowledged') {
+        cancelIrrigTracking()
+        setIrrigState('idle')
+        setIrrigSecs(null)
+        setIrrigMsg({ text: `✓ Irrigation started — running for ${seconds}s`, type: 'success' })
+        setTimeout(() => setIrrigMsg(null), 8000)
+      } else if (status === 'failed') {
+        cancelIrrigTracking()
+        setIrrigState('idle')
+        setIrrigSecs(null)
+        setIrrigMsg({ text: '❌ Device reported command failure.', type: 'error' })
+      }
+    })
+    irrigUnsubRef.current = unsub
+
+    // Step 5: 5-minute timeout — assume SMS fallback if no ack
+    irrigTimerRef.current = setTimeout(async () => {
+      cancelIrrigTracking()
+      try { await updateDoc(cmdDocRef, { status: 'timeout', updatedAt: new Date() }) } catch {}
+      setIrrigState('idle')
+      setIrrigSecs(null)
+      setIrrigMsg({
+        text: '⚠ Device unreachable — command may be delivered via SMS fallback',
+        type: 'warning',
+      })
+    }, COMMAND_TIMEOUT_MS)
+  }
+
+  // ── Stop irrigation ────────────────────────────────────────────────────────
+  async function handleStop() {
+    // Cancel any active pending command tracking
+    cancelIrrigTracking()
+
+    // Mark the Firestore pending command as cancelled (if any)
+    if (irrigState === 'pending' && irrigCmdDocRef.current) {
+      try { await updateDoc(irrigCmdDocRef.current, { status: 'cancelled', updatedAt: new Date() }) }
+      catch { /* best-effort */ }
+    }
+
+    setIrrigState('idle')
+    setIrrigSecs(null)
+
+    // Send stop command
+    setIrrigMsg({ text: '⏹ Sending stop command…', type: 'info' })
+    try {
+      await api.post('/api/command', { deviceId, action: 'stop' })
+      setIrrigMsg({ text: '⏹ Stop command sent', type: 'success' })
+    } catch {
+      setIrrigMsg({ text: '❌ Failed to send stop command', type: 'error' })
+    }
+    setTimeout(() => setIrrigMsg(null), 4000)
+  }
+
+  // ── Loading / not-found states ─────────────────────────────────────────────
+  if (loading) return <div className="page-centered"><div className="spinner" /></div>
   if (!device) return (
     <div className="page">
       <button className="btn btn-ghost btn-sm" onClick={() => navigate('/dashboard')}>← Dashboard</button>
@@ -133,12 +344,11 @@ function NodeDetail() {
   const pct     = batteryPct(reading?.batteryMv)
 
   const moistureAlert = reading?.moisture != null
-    ? reading.moisture < 25 ? 'Critically dry!' : reading.moisture > 85 ? 'Waterlogged!' : null
-    : null
+    ? reading.moisture < 25 ? 'Critically dry!' : reading.moisture > 85 ? 'Waterlogged!' : null : null
   const phAlert = reading?.ph != null
-    ? (reading.ph < 5.0 || reading.ph > 8.0) ? 'Critical range!' : null
-    : null
+    ? (reading.ph < 5.0 || reading.ph > 8.0) ? 'Critical range!' : null : null
 
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="page">
       {/* ── Top bar ── */}
@@ -153,19 +363,14 @@ function NodeDetail() {
       <div style={{ marginBottom: 'var(--space-5)' }}>
         <div className="flex items-center justify-between" style={{ flexWrap: 'wrap', gap: 'var(--space-2)' }}>
           <div>
-            <h1 style={{ fontSize: 'var(--font-xl)', fontWeight: 700 }}>
-              {device.label || deviceId}
-            </h1>
-            {device.crop && (
-              <p className="text-sm text-muted" style={{ marginTop: '2px' }}>🌿 {device.crop}</p>
-            )}
+            <h1 style={{ fontSize: 'var(--font-xl)', fontWeight: 700 }}>{device.label || deviceId}</h1>
+            {device.crop && <p className="text-sm text-muted" style={{ marginTop: '2px' }}>🌿 {device.crop}</p>}
           </div>
           <span className={`badge ${online ? 'badge-online' : 'badge-offline'}`}>
             <span className={`dot ${online ? 'dot-online' : 'dot-offline'}`} />
             {online ? 'Online' : 'Offline'}
           </span>
         </div>
-
         <div style={{ marginTop: 'var(--space-3)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
           <p className="text-sm text-muted">
             🕐 Last updated:{' '}
@@ -178,7 +383,7 @@ function NodeDetail() {
         </div>
       </div>
 
-      {/* ── Sensor grid ── */}
+      {/* ── Sensor readings grid ── */}
       <p className="section-title">Sensor Readings</p>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 'var(--space-3)', marginBottom: 'var(--space-5)' }}>
         <SensorCard icon="💧" label="Soil Moisture"
@@ -225,33 +430,69 @@ function NodeDetail() {
       {/* ── Request reading ── */}
       <button id="request-reading-btn" className="btn btn-ghost w-full"
         style={{ marginBottom: 'var(--space-4)' }}
-        onClick={() => sendCommand('read')} disabled={cmdLoading}>
-        📡 Request Reading Now
+        onClick={handleReadRequest} disabled={readLoading}>
+        {readLoading ? <><span className="spinner" style={{ width: '14px', height: '14px', borderWidth: '2px' }} /> Requesting…</> : '📡 Request Reading Now'}
       </button>
+      {readMsg && (
+        <p className="text-sm" style={{
+          marginTop: '-var(--space-3)', marginBottom: 'var(--space-3)',
+          color: readMsg.startsWith('❌') ? 'var(--color-danger)' : 'var(--color-primary)',
+        }}>{readMsg}</p>
+      )}
 
       <div className="divider" />
 
-      {/* ── Irrigation ── */}
+      {/* ── Irrigation Control ── */}
       <p className="section-title">Irrigation Control</p>
       <div className="card-sm" style={{ marginBottom: 'var(--space-4)' }}>
+
+        {/* Status explanation */}
         <p className="text-sm text-muted" style={{ marginBottom: 'var(--space-3)' }}>
-          Start irrigation for a set duration or stop immediately.
+          {irrigState === 'pending'
+            ? `⏳ Waiting for device to acknowledge the ${irrigSecs}s command…`
+            : online
+              ? 'Start irrigation for a set duration, or stop the pump immediately.'
+              : '📵 Device offline — commands will be queued via SMS fallback.'}
         </p>
+
+        {/* Duration + Stop buttons */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--space-2)' }}>
-          {[30, 60, 120].map(s => (
-            <button key={s} id={`irrigate-${s}s`}
-              className="btn btn-primary btn-sm"
-              onClick={() => sendCommand('irrigate', { durationSeconds: s })}
-              disabled={cmdLoading}>{s}s</button>
-          ))}
-          <button id="stop-irrigation-btn" className="btn btn-danger btn-sm"
-            onClick={() => sendCommand('stop')} disabled={cmdLoading}>Stop</button>
+          {[30, 60, 120].map(s => {
+            const isThisPending = irrigState === 'pending' && irrigSecs === s
+            const isDisabled    = irrigState === 'pending'
+            return (
+              <button
+                key={s}
+                id={`irrigate-${s}s`}
+                className={`btn btn-sm ${isThisPending ? 'btn-irrig-pending' : 'btn-primary'}`}
+                onClick={() => handleIrrigate(s)}
+                disabled={isDisabled}
+                title={isThisPending ? 'Awaiting device acknowledgement…' : `Irrigate for ${s} seconds`}
+              >
+                {isThisPending ? '⏳ …' : `${s}s`}
+              </button>
+            )
+          })}
+
+          {/* Stop — always enabled so user can abort */}
+          <button
+            id="stop-irrigation-btn"
+            className="btn btn-danger btn-sm"
+            onClick={handleStop}
+            title="Stop irrigation immediately"
+          >
+            Stop
+          </button>
         </div>
-        {cmdMsg && (
-          <p className="text-sm" style={{
-            marginTop: 'var(--space-3)',
-            color: cmdMsg.startsWith('❌') ? 'var(--color-danger)' : 'var(--color-primary)',
-          }}>{cmdMsg}</p>
+
+        {/* Contextual message banner */}
+        <IrrigMessage msg={irrigMsg} />
+
+        {/* Timeout countdown hint (shown when pending) */}
+        {irrigState === 'pending' && (
+          <p className="text-xs text-dim" style={{ marginTop: 'var(--space-2)' }}>
+            Will show SMS fallback warning if no response in 5 minutes.
+          </p>
         )}
       </div>
 
