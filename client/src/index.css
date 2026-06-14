@@ -25,6 +25,9 @@
   --color-primary-muted: rgba(0, 230, 118, 0.1);
   --color-primary-glow: rgba(0, 230, 118, 0.25);
 
+  /* Falling flower petals */
+  --flower-color: rgba(185, 235, 60, 0.45);
+
   /* Accent — sky blue */
   --color-accent:       #40C4FF;
   --color-accent-muted: rgba(64, 196, 255, 0.1);
@@ -67,6 +70,9 @@
   --color-primary-dim:  #008040;
   --color-primary-muted: rgba(0, 165, 80, 0.1);
   --color-primary-glow: rgba(0, 165, 80, 0.15);
+
+  /* Falling flower petals */
+  --flower-color: rgba(130, 185, 20, 0.35);
 
   --color-accent:       #0277BD;
   --color-accent-muted: rgba(2, 119, 189, 0.1);
@@ -444,6 +450,26 @@ select { font-family: inherit; }
   box-shadow: 0 0 8px var(--color-primary-glow);
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   FALLING FLOWERS ANIMATION
+   ══════════════════════════════════════════════════════════════════════════ */
+@keyframes petalFall {
+  0% {
+    transform: translateY(-40px) translateX(0) rotate(0deg) scale(1);
+    opacity: 0;
+  }
+  6%  { opacity: 1; }
+  92% { opacity: 0.7; }
+  100% {
+    transform: translateY(108vh) translateX(var(--drift, 40px)) rotate(var(--spin, 270deg)) scale(0.75);
+    opacity: 0;
+  }
+}
+
+/* Dialog entry animations */
+@keyframes fadeIn  { from { opacity: 0 } to { opacity: 1 } }
+@keyframes slideUp { from { transform: translateY(12px); opacity: 0 } to { transform: translateY(0); opacity: 1 } }
 
 /* ── Table ───────────────────────────────────────────────────────────────── */
 .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
