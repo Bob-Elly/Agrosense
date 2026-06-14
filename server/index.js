@@ -21,7 +21,16 @@ const app  = express()
 const PORT = process.env.PORT || 5000
 
 // ── Middleware ────────────────────────────────────────────────────────────────
-app.use(cors({ origin: process.env.CLIENT_ORIGIN }))
+const allowedOrigins = [
+  'https://agrosense-jet.vercel.app',
+  process.env.CLIENT_ORIGIN,
+].filter(Boolean)
+
+app.use(cors({
+  origin: allowedOrigins,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}))
 app.use(express.json())
 app.use(morgan('dev'))
 
