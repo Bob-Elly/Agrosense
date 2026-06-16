@@ -16,6 +16,7 @@
 import { initializeApp } from 'firebase/app'
 import { getAuth } from 'firebase/auth'
 import { getFirestore } from 'firebase/firestore'
+import { getStorage } from 'firebase/storage'
 
 // Read config values from Vite environment variables (defined in client/.env)
 const firebaseConfig = {
@@ -31,7 +32,8 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig)
 
 // Export individual Firebase services so other files can import them directly
-export const auth = getAuth(app)       // Firebase Authentication
-export const db   = getFirestore(app)  // Cloud Firestore database
+export const auth    = getAuth(app)       // Firebase Authentication
+export const db      = getFirestore(app)  // Cloud Firestore database
+export const storage = getStorage(app)    // Cloud Storage for Firebase
 
 export default app

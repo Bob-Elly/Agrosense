@@ -13,6 +13,8 @@ import Dashboard  from './pages/Dashboard.jsx'
 import NodeDetail from './pages/NodeDetail.jsx'
 import Analytics  from './pages/Analytics.jsx'
 import LinkDevice from './pages/LinkDevice.jsx'
+import CropLibrary from './pages/CropLibrary.jsx'
+import Settings   from './pages/Settings.jsx'
 
 function App() {
   return (
@@ -33,6 +35,8 @@ function App() {
             <Route path="/node/:deviceId"      element={<NodeDetail />} />
             <Route path="/analytics/:deviceId" element={<Analytics />} />
             <Route path="/link-device"         element={<LinkDevice />} />
+            <Route path="/crop-library"        element={<CropLibrary />} />
+            <Route path="/settings"            element={<Settings />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />

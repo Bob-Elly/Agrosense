@@ -11,6 +11,7 @@
 import React from 'react'
 import { Navigate, Outlet } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
+import HamburgerMenu from './HamburgerMenu.jsx'
 
 function ProtectedRoute() {
   const { currentUser, loading } = useAuth()
@@ -36,8 +37,13 @@ function ProtectedRoute() {
     return <Navigate to="/" replace />
   }
 
-  // ③ Authenticated → render the matched child route.
-  return <Outlet />
+  // ③ Authenticated → render the matched child route with the global menu.
+  return (
+    <>
+      <HamburgerMenu />
+      <Outlet />
+    </>
+  )
 }
 
 export default ProtectedRoute
