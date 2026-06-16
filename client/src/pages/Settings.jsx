@@ -1,55 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect } from 'react'
 import { updateProfile, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth'
 import { doc, getDoc, setDoc } from 'firebase/firestore'
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
-import { auth, db, storage } from '../firebase.js'
+import { auth, db } from '../firebase.js'
 import { useAuth } from '../context/AuthContext.jsx'
 import ThemeToggle from '../components/ThemeToggle.jsx'
-
-const compressImage = (file) => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.readAsDataURL(file)
-    reader.onload = (event) => {
-      const img = new Image()
-      img.src = event.target.result
-      img.onload = () => {
-        const MAX_WIDTH = 200
-        const MAX_HEIGHT = 200
-        let width = img.width
-        let height = img.height
-
-        if (width > height) {
-          if (width > MAX_WIDTH) {
-            height *= MAX_WIDTH / width
-            width = MAX_WIDTH
-          }
-        } else {
-          if (height > MAX_HEIGHT) {
-            width *= MAX_HEIGHT / height
-            height = MAX_HEIGHT
-          }
-        }
-
-        const canvas = document.createElement('canvas')
-        canvas.width = width
-        canvas.height = height
-        const ctx = canvas.getContext('2d')
-        ctx.drawImage(img, 0, 0, width, height)
-        
-        canvas.toBlob((blob) => {
-          if (blob) {
-            resolve(blob)
-          } else {
-            reject(new Error('Canvas to Blob failed'))
-          }
-        }, 'image/jpeg', 0.8)
-      }
-      img.onerror = (error) => reject(error)
-    }
-    reader.onerror = (error) => reject(error)
-  })
-}
 
 function Settings() {
   const { currentUser } = useAuth()
@@ -58,10 +12,6 @@ function Settings() {
   const [displayName, setDisplayName] = useState('')
   const [password, setPassword] = useState('')
   const [loadingAccount, setLoadingAccount] = useState(false)
-  
-  // File Upload State
-  const fileInputRef = useRef(null)
-  const [uploading, setUploading] = useState(false)
 
   // Security State
   const [isAccountLocked, setIsAccountLocked] = useState(true)
@@ -131,44 +81,6 @@ function Settings() {
       showMessage('error', 'Authentication failed. Please check your password.')
     } finally {
       setReauthenticating(false)
-    }
-  }
-
-  // ── Handle Profile Picture Upload ──
-  const handleImageUpload = async (e) => {
-    const file = e.target.files[0]
-    if (!file || !currentUser) return
-
-    setUploading(true)
-    try {
-      // 1. Compress image to max 200x200 JPEG with 80% quality
-      const compressedBlob = await compressImage(file)
-      
-      // Create a reference to the storage location
-      const storageRef = ref(storage, `profile_pictures/${currentUser.uid}.jpg`)
-      
-      // 2. Upload with 30s timeout
-      const uploadPromise = uploadBytes(storageRef, compressedBlob)
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Upload timed out after 30 seconds')), 30000)
-      )
-      await Promise.race([uploadPromise, timeoutPromise])
-      
-      // Get the download URL
-      const photoURL = await getDownloadURL(storageRef)
-      
-      // Update the user's auth profile
-      await updateProfile(currentUser, { photoURL })
-      
-      showMessage('success', 'Profile picture updated successfully')
-    } catch (err) {
-      console.error(err)
-      showMessage('error', 'Failed to upload profile picture: ' + err.message)
-    } finally {
-      setUploading(false)
-      if (fileInputRef.current) {
-        fileInputRef.current.value = ''
-      }
     }
   }
 
@@ -292,36 +204,6 @@ function Settings() {
             </div>
           ) : (
             <>
-              <div className="flex flex-col items-center mb-6">
-                <div className="mb-3 position-relative">
-                  {currentUser?.photoURL ? (
-                    <img src={currentUser.photoURL} alt="Profile" className="avatar-lg avatar" style={{ width: '96px', height: '96px' }} />
-                  ) : (
-                    <div className="avatar avatar-lg flex items-center justify-center" style={{ fontSize: '2.5rem', fontWeight: 600 }}>
-                      {defaultInitial}
-                    </div>
-                  )}
-                </div>
-                
-                <input 
-                  type="file" 
-                  accept="image/*" 
-                  ref={fileInputRef} 
-                  style={{ display: 'none' }} 
-                  onChange={handleImageUpload}
-                />
-                
-                <button 
-                  className="btn btn-ghost btn-sm" 
-                  onClick={() => fileInputRef.current.click()}
-                  disabled={uploading}
-                  style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-                >
-                  {uploading && <div className="spinner" style={{ width: '14px', height: '14px', borderWidth: '2px' }} />}
-                  {uploading ? 'Uploading...' : 'Change Picture'}
-                </button>
-              </div>
-
               <form onSubmit={handleAccountUpdate}>
                 <div className="form-group">
                   <label className="label">Display Name</label>
