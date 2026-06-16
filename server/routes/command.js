@@ -7,6 +7,7 @@
 import { Router } from 'express'
 import { db }    from '../config/firebaseAdmin.js'
 import { sms }   from '../config/africasTalking.js'
+import { createCommandNotification } from '../services/notifications.js'
 
 const router = Router()
 
@@ -91,6 +92,10 @@ router.post('/', async (req, res, next) => {
           message: smsMessage,
           enque: true
         })
+
+        // Notify
+        createCommandNotification(deviceId, action, 'sms_fallback').catch(console.error)
+
         return res.status(201).json({
           message: `Command "${action}" queued for ${deviceId}. Device offline, SMS sent.`,
           commandId: docId,
@@ -106,6 +111,9 @@ router.post('/', async (req, res, next) => {
         return res.status(500).json({ error: 'Failed to send SMS fallback' })
       }
     }
+
+    // Notify
+    createCommandNotification(deviceId, action, 'sent').catch(console.error)
 
     return res.status(201).json({
       message:   `Command "${action}" queued for ${deviceId}.`,
@@ -144,6 +152,11 @@ router.post('/ack', async (req, res, next) => {
     })
 
     console.log(`[ACK] Device: ${deviceId} | Command: ${commandId} | Status: ${newStatus}`)
+
+    // Notify
+    const actionSnap = await queueRef(deviceId).doc(commandId).get()
+    const action = actionSnap.exists ? actionSnap.data().action : 'unknown'
+    createCommandNotification(deviceId, action, newStatus).catch(console.error)
 
     return res.json({
       success:   true,

@@ -4,6 +4,7 @@ import { doc, getDoc, setDoc } from 'firebase/firestore'
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { auth, db, storage } from '../firebase.js'
 import { useAuth } from '../context/AuthContext.jsx'
+import ThemeToggle from '../components/ThemeToggle.jsx'
 
 function Settings() {
   const { currentUser } = useAuth()
@@ -48,7 +49,10 @@ function Settings() {
           const userDoc = await getDoc(userDocRef)
           if (userDoc.exists()) {
             const data = userDoc.data()
-            if (data.notifications) {
+            if (data.notificationPreferences) {
+              setNotifications(data.notificationPreferences)
+            } else if (data.notifications) {
+              // Fallback for legacy data
               setNotifications(data.notifications)
             }
           }
@@ -156,7 +160,7 @@ function Settings() {
     setLoadingNotif(true)
     try {
       const userDocRef = doc(db, 'users', currentUser.uid)
-      await setDoc(userDocRef, { notifications }, { merge: true })
+      await setDoc(userDocRef, { notificationPreferences: notifications }, { merge: true })
       showMessage('success', 'Notification preferences saved')
     } catch (err) {
       console.error(err)
@@ -174,7 +178,10 @@ function Settings() {
 
   return (
     <div className="page" style={{ paddingTop: '5rem' }}>
-      <h2 className="mb-4">Settings</h2>
+      <div className="flex items-center justify-between mb-4">
+        <h2>Settings</h2>
+        <ThemeToggle />
+      </div>
 
       {message.text && (
         <div className={`mb-4 p-3 rounded ${message.type === 'error' ? 'bg-red-900/30 border border-red-500 text-red-200' : 'bg-green-900/30 border border-green-500 text-green-200'}`} style={{ 

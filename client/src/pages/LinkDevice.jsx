@@ -15,7 +15,7 @@ import {
   doc, setDoc, deleteDoc,
   updateDoc, arrayUnion, arrayRemove,
   collection, query, where, onSnapshot,
-  serverTimestamp,
+  serverTimestamp, addDoc
 }                                      from 'firebase/firestore'
 import { db }                          from '../firebase.js'
 import { useAuth }                     from '../context/AuthContext.jsx'
@@ -142,6 +142,16 @@ function LinkDevice() {
       const id = targetDevice.deviceId || targetDevice.id
       await deleteDoc(doc(db, 'devices', id))
       await updateDoc(doc(db, 'users', currentUser.uid), { devices: arrayRemove(id) })
+      
+      // Emit Notification
+      await addDoc(collection(db, 'users', currentUser.uid, 'notifications'), {
+        title: 'Node Removed',
+        message: `Device ${targetDevice.label || id} was unlinked from your account.`,
+        type: 'info',
+        read: false,
+        timestamp: new Date()
+      })
+
       setConfirmOpen(false)
       setTargetDevice(null)
       setToast({ message: 'Node removed successfully.', type: 'success' })
@@ -174,6 +184,16 @@ function LinkDevice() {
         },
         { merge: true }
       )
+
+      // Emit Notification
+      await addDoc(collection(db, 'users', currentUser.uid, 'notifications'), {
+        title: 'Node Linked',
+        message: `Device ${label.trim() || trimmedId} was successfully added to your account.`,
+        type: 'success',
+        read: false,
+        timestamp: new Date()
+      })
+
       setToast({ message: `"${label.trim() || trimmedId}" linked successfully!`, type: 'success' })
       setDeviceId(''); setLabel(''); setCrop('')
     } catch (err) {

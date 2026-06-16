@@ -21,6 +21,7 @@
 
 import { Router } from 'express'
 import { db }    from '../config/firebaseAdmin.js'
+import { processTelemetryAlerts } from '../services/notifications.js'
 
 const router = Router()
 
@@ -81,6 +82,11 @@ router.post('/', async (req, res, next) => {
       },
       { merge: true }
     )
+
+    // Process alerts asynchronously (don't block response)
+    processTelemetryAlerts(deviceId, reading).catch(err => {
+      console.error('Failed to process telemetry alerts:', err)
+    })
 
     return res.status(201).json({
       message:   'Telemetry recorded successfully.',

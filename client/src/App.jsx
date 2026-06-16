@@ -15,6 +15,7 @@ import Analytics  from './pages/Analytics.jsx'
 import LinkDevice from './pages/LinkDevice.jsx'
 import CropLibrary from './pages/CropLibrary.jsx'
 import Settings   from './pages/Settings.jsx'
+import Notifications from './pages/Notifications.jsx'
 
 function App() {
   return (
@@ -37,6 +38,7 @@ function App() {
             <Route path="/link-device"         element={<LinkDevice />} />
             <Route path="/crop-library"        element={<CropLibrary />} />
             <Route path="/settings"            element={<Settings />} />
+            <Route path="/notifications"       element={<Notifications />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />

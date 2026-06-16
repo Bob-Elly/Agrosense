@@ -1,7 +1,8 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { collection, query, where, onSnapshot } from 'firebase/firestore'
 import { useAuth } from '../context/AuthContext.jsx'
-import { auth } from '../firebase.js'
+import { auth, db } from '../firebase.js'
 
 function HamburgerMenu() {
   const [isOpen, setIsOpen] = useState(false)
@@ -20,23 +21,47 @@ function HamburgerMenu() {
 
   const closeDrawer = () => setIsOpen(false)
 
+  const [unreadCount, setUnreadCount] = useState(0)
+
+  useEffect(() => {
+    if (!currentUser) return
+    const q = query(
+      collection(db, 'users', currentUser.uid, 'notifications'),
+      where('read', '==', false)
+    )
+    const unsub = onSnapshot(q, (snap) => {
+      setUnreadCount(snap.docs.length)
+    }, err => {
+      console.error("Error fetching unread count:", err)
+    })
+    return unsub
+  }, [currentUser])
+
   // Use a default initial if displayName is missing
   const defaultInitial = currentUser?.email?.[0].toUpperCase() || 'U'
 
   return (
     <>
       {/* ── Hamburger Button ── */}
-      <button 
-        className="hamburger-btn" 
-        onClick={() => setIsOpen(true)}
-        aria-label="Open navigation menu"
-      >
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <line x1="3" y1="12" x2="21" y2="12"></line>
-          <line x1="3" y1="6" x2="21" y2="6"></line>
-          <line x1="3" y1="18" x2="21" y2="18"></line>
-        </svg>
-      </button>
+      <div style={{ position: 'relative', display: 'inline-block' }}>
+        <button 
+          className="hamburger-btn" 
+          onClick={() => setIsOpen(true)}
+          aria-label="Open navigation menu"
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <line x1="3" y1="18" x2="21" y2="18"></line>
+          </svg>
+        </button>
+        {unreadCount > 0 && (
+          <span style={{
+            position: 'absolute', top: 6, right: 6, width: 10, height: 10, 
+            backgroundColor: 'var(--color-danger)', borderRadius: '50%', border: '2px solid var(--color-bg)'
+          }}></span>
+        )}
+      </div>
 
       {/* ── Overlay ── */}
       <div 
@@ -89,6 +114,26 @@ function HamburgerMenu() {
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
             Crop Library
+          </Link>
+
+          <Link 
+            to="/notifications" 
+            className={`drawer-link ${location.pathname.startsWith('/notifications') ? 'active' : ''}`}
+            onClick={closeDrawer}
+            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+              Notifications
+            </div>
+            {unreadCount > 0 && (
+              <span style={{ 
+                backgroundColor: 'var(--color-danger)', color: 'white', fontSize: '0.7rem', 
+                fontWeight: 'bold', padding: '0.1rem 0.4rem', borderRadius: '1rem' 
+              }}>
+                {unreadCount}
+              </span>
+            )}
           </Link>
 
           <Link 
