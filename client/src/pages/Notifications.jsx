@@ -90,8 +90,8 @@ function Notifications() {
   }
 
   return (
-    <div className="page" style={{ paddingTop: '5rem' }}>
-      <div className="flex items-center justify-between mb-4">
+    <div className="page">
+      <div className="flex items-center justify-between mb-6">
         <h2>Notifications</h2>
         <ThemeToggle />
       </div>

@@ -39,7 +39,7 @@ function CropLibrary() {
   )
 
   return (
-    <div className="page" style={{ paddingTop: '5rem' }}>
+    <div className="page">
       <div className="flex items-center justify-between mb-4">
         <h2>Crop Library</h2>
         <ThemeToggle />

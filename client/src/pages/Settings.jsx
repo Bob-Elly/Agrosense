@@ -143,7 +143,7 @@ function Settings() {
   const defaultInitial = currentUser?.email?.[0].toUpperCase() || 'U'
 
   return (
-    <div className="page" style={{ paddingTop: '5rem' }}>
+    <div className="page">
       <div className="flex items-center justify-between mb-4">
         <h2>Settings</h2>
         <ThemeToggle />
