@@ -334,11 +334,11 @@ function LinkDevice() {
           <div className="form-group">
             <label className="label" htmlFor="device-id">Device ID *</label>
             <input id="device-id" className="input" type="text"
-              placeholder="e.g. esp32-node-01"
+              placeholder="e.g. A4:CF:12:7B:3E:9D"
               value={deviceId} onChange={e => setDeviceId(e.target.value)}
               required autoCapitalize="none" />
             <p className="text-xs text-dim" style={{ marginTop: '0.3rem' }}>
-              The unique ID programmed into your ESP32 firmware.
+              This is the MAC address of your ESP32 node.
             </p>
           </div>
           <div className="form-group">
