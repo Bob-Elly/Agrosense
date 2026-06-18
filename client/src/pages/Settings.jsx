@@ -178,7 +178,21 @@ function Settings() {
             )}
           </h3>
           
-          {isAccountLocked ? (
+          {resettingPassword ? (
+            <div className="py-2">
+              <h4 className="mb-4 text-center">Reset Your Password</h4>
+              <VerificationFlow 
+                action="reset_password"
+                initialEmail={currentUser.email}
+                emailReadOnly={true}
+                onSuccess={() => {
+                  setResettingPassword(false)
+                  showMessage('success', 'Password reset successfully.')
+                }}
+                onCancel={() => setResettingPassword(false)}
+              />
+            </div>
+          ) : isAccountLocked ? (
             <div className="text-center py-6">
               <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-dim)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="mx-auto mb-4">
                 <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
@@ -188,16 +202,37 @@ function Settings() {
               <p className="text-sm text-muted mb-6">
                 Please enter your password to unlock account management.
               </p>
-              <form onSubmit={handleReauthenticate} className="flex flex-col gap-3">
-                <input 
-                  type="password" 
-                  className="input" 
-                  placeholder="Current Password" 
-                  value={reauthPassword}
-                  onChange={(e) => setReauthPassword(e.target.value)}
-                  required
-                />
-                <button type="submit" className="btn btn-primary" disabled={reauthenticating}>
+              <form onSubmit={handleReauthenticate} className="flex flex-col gap-3 text-left">
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="label mb-0" style={{ fontSize: '0.8rem' }}>Current Password</label>
+                    <button 
+                      type="button" 
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: 'var(--color-text-muted)',
+                        fontSize: '0.75rem',
+                        cursor: 'pointer',
+                        padding: 0
+                      }}
+                      onMouseOver={(e) => e.target.style.color = 'var(--color-accent)'}
+                      onMouseOut={(e) => e.target.style.color = 'var(--color-text-muted)'}
+                      onClick={() => setResettingPassword(true)}
+                    >
+                      Forgot password?
+                    </button>
+                  </div>
+                  <input 
+                    type="password" 
+                    className="input w-full" 
+                    placeholder="••••••••" 
+                    value={reauthPassword}
+                    onChange={(e) => setReauthPassword(e.target.value)}
+                    required
+                  />
+                </div>
+                <button type="submit" className="btn btn-primary mt-2" disabled={reauthenticating}>
                   {reauthenticating ? 'Verifying...' : 'Unlock Account'}
                 </button>
               </form>
@@ -230,29 +265,16 @@ function Settings() {
 
               <div className="divider" style={{ margin: '1.5rem 0' }}></div>
 
-              {resettingPassword ? (
-                <VerificationFlow 
-                  action="reset_password"
-                  initialEmail={currentUser.email}
-                  emailReadOnly={true}
-                  onSuccess={() => {
-                    setResettingPassword(false)
-                    showMessage('success', 'Password reset successfully.')
-                  }}
-                  onCancel={() => setResettingPassword(false)}
-                />
-              ) : (
-                <div className="form-group mb-0">
-                  <label className="label">Security</label>
-                  <button 
-                    className="btn btn-ghost w-full" 
-                    style={{ border: '1px solid var(--color-border)', justifyContent: 'center' }}
-                    onClick={() => setResettingPassword(true)}
-                  >
-                    Reset Password
-                  </button>
-                </div>
-              )}
+              <div className="form-group mb-0">
+                <label className="label">Security</label>
+                <button 
+                  className="btn btn-ghost w-full" 
+                  style={{ border: '1px solid var(--color-border)', justifyContent: 'center' }}
+                  onClick={() => setResettingPassword(true)}
+                >
+                  Reset Password
+                </button>
+              </div>
             </>
           )}
         </div>
