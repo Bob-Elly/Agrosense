@@ -180,7 +180,19 @@ function LinkDevice() {
           crop:     crop || null,
           owner:    currentUser.uid,
           linkedAt: serverTimestamp(),
-          status:   'offline',
+          status:   'offline', // Initial state
+          // Re-adding dummy data so you can test AI suggestions
+          lastReading: {
+            moisture: parseFloat((Math.random() * (80 - 40) + 40).toFixed(1)),
+            temperature: parseFloat((Math.random() * (32 - 20) + 20).toFixed(1)),
+            humidity: parseFloat((Math.random() * (85 - 50) + 50).toFixed(1)),
+            ph: parseFloat((Math.random() * (7.5 - 5.0) + 5.0).toFixed(1)),
+            nitrogen: Math.floor(Math.random() * (80 - 20) + 20),
+            phosphorus: Math.floor(Math.random() * (40 - 10) + 10),
+            potassium: Math.floor(Math.random() * (150 - 60) + 60),
+            batteryMv: Math.floor(Math.random() * (4200 - 3500) + 3500)
+          },
+          updatedAt: serverTimestamp()
         },
         { merge: true }
       )
