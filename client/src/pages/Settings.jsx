@@ -256,75 +256,56 @@ function Settings() {
           ) : (
             <div className="flex flex-col gap-4">
               
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="font-semibold">Low Moisture Alert</div>
-                  <div className="text-xs text-muted">Get notified when soil is dry</div>
-                </div>
-                <label className="toggle-switch">
-                  <input type="checkbox" checked={notifications.lowMoisture} onChange={() => handleToggle('lowMoisture')} />
-                  <span className="toggle-slider"></span>
-                </label>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="font-semibold">pH Level Alert</div>
-                  <div className="text-xs text-muted">Warn when pH leaves optimal range</div>
-                </div>
-                <label className="toggle-switch">
-                  <input type="checkbox" checked={notifications.phAlert} onChange={() => handleToggle('phAlert')} />
-                  <span className="toggle-slider"></span>
-                </label>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="font-semibold">Low Nutrient Alert</div>
-                  <div className="text-xs text-muted">Warn when N, P, or K is depleted</div>
-                </div>
-                <label className="toggle-switch">
-                  <input type="checkbox" checked={notifications.lowNutrient} onChange={() => handleToggle('lowNutrient')} />
-                  <span className="toggle-slider"></span>
-                </label>
-              </div>
+              <p className="text-sm text-muted mb-2">Core alerts (Moisture, pH, NPK, and Connectivity) are always active to ensure your farm's safety.</p>
 
               <div className="divider" style={{ margin: '0.5rem 0' }}></div>
 
+              <h4 className="font-semibold">Delivery Methods</h4>
+
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="font-semibold">Node Offline Alert</div>
-                  <div className="text-xs text-muted">Notified when a device disconnects</div>
+                  <div className="font-semibold">In-app Dashboard</div>
+                  <div className="text-xs text-muted">Receive alerts in the notification center</div>
                 </div>
                 <label className="toggle-switch">
-                  <input type="checkbox" checked={notifications.nodeOffline} onChange={() => handleToggle('nodeOffline')} />
-                  <span className="toggle-slider"></span>
+                  <input type="checkbox" checked={true} disabled />
+                  <span className="toggle-slider" style={{ opacity: 0.5, cursor: 'not-allowed' }}></span>
                 </label>
               </div>
 
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="font-semibold">Device Linked/Removed</div>
-                  <div className="text-xs text-muted">Confirmation of hardware changes</div>
+                  <div className="font-semibold text-dim">
+                    SMS Text Messages 
+                    <span style={{ fontSize: '0.65rem', padding: '0.15rem 0.4rem', marginLeft: '0.5rem', background: 'var(--color-surface-alt)', borderRadius: 'var(--radius-sm)' }}>Coming soon</span>
+                  </div>
+                  <div className="text-xs text-muted">Get instant text alerts on your phone</div>
                 </div>
                 <label className="toggle-switch">
-                  <input type="checkbox" checked={notifications.nodeConfirmation} onChange={() => handleToggle('nodeConfirmation')} />
-                  <span className="toggle-slider"></span>
+                  <input type="checkbox" checked={false} disabled />
+                  <span className="toggle-slider" style={{ opacity: 0.5, cursor: 'not-allowed' }}></span>
                 </label>
               </div>
 
-              <div className="divider" style={{ margin: '0.5rem 0' }}></div>
-
-              <div className="form-group mb-0">
-                <label className="label">Delivery Method</label>
-                <select 
-                  className="select" 
-                  value={notifications.deliveryMethod} 
-                  onChange={(e) => setNotifications(prev => ({...prev, deliveryMethod: e.target.value}))}
-                >
-                  <option value="in-app">In-App Dashboard Only</option>
-                  <option value="email">In-App + Email</option>
-                </select>
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="font-semibold">Email Alerts</div>
+                  <div className="text-xs text-muted">Receive summary alerts in your inbox</div>
+                </div>
+                <label className="toggle-switch">
+                  <input 
+                    type="checkbox" 
+                    checked={notifications.emailAlerts === true || notifications.deliveryMethod === 'email'} 
+                    onChange={() => {
+                      setNotifications(prev => ({
+                        ...prev, 
+                        emailAlerts: !(prev.emailAlerts === true || prev.deliveryMethod === 'email'),
+                        deliveryMethod: 'in-app' // Clear legacy value so we don't conflict
+                      }))
+                    }} 
+                  />
+                  <span className="toggle-slider"></span>
+                </label>
               </div>
               
               <button 

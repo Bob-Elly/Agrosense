@@ -94,20 +94,17 @@ export async function processTelemetryAlerts(deviceId, reading) {
       // We will map it to a general alert if needed, or skip it.
     }
 
-    // 4. Create notifications for each alert if preference is enabled
+    // 4. Create notifications for each alert (always active)
     for (const alert of alerts) {
-      // If the user hasn't explicitly disabled it, default to true or false?
-      // Based on our UI, defaults are mostly true. If prefs[alert.key] is exactly false, skip.
-      if (prefs[alert.key] === false) continue
-
       const title = `${alert.param} Alert for ${device.label || deviceId}`
       const message = `Current ${alert.param.toLowerCase()} is ${alert.value}, which is ${alert.issue} the optimal range of ${alert.bounds.min} - ${alert.bounds.max}.`
 
-      // In-app
+      // In-app (compulsory)
       await createInAppNotification(ownerId, title, message, 'warning')
 
       // Email
-      if (prefs.deliveryMethod === 'email' && userEmail) {
+      const wantsEmail = prefs.emailAlerts === true || prefs.deliveryMethod === 'email'
+      if (wantsEmail && userEmail) {
         const emailText = `Hello,\n\nAn alert was triggered for your crop (${device.crop || 'Unknown'}).\nNode: ${device.label || deviceId}\n\nParameter: ${alert.param}\nCurrent Value: ${alert.value}\nOptimal Range: ${alert.bounds.min} to ${alert.bounds.max}\n\nPlease check your dashboard for more details.\n\n- AgroSense`
         await sendEmailNotification(userEmail, title, emailText)
       }
@@ -115,12 +112,13 @@ export async function processTelemetryAlerts(deviceId, reading) {
 
     // Check if node came back online
     // If the device's last status was offline, and now we got telemetry, it's back online!
-    if (device.status === 'offline' && prefs.nodeOffline !== false) {
+    if (device.status === 'offline') {
       const title = `Node Online: ${device.label || deviceId}`
       const message = `Device has reconnected and sent new telemetry.`
       await createInAppNotification(ownerId, title, message, 'success')
       
-      if (prefs.deliveryMethod === 'email' && userEmail) {
+      const wantsEmail = prefs.emailAlerts === true || prefs.deliveryMethod === 'email'
+      if (wantsEmail && userEmail) {
         await sendEmailNotification(userEmail, title, `Your device ${device.label || deviceId} is back online.`)
       }
     }
