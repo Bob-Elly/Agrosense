@@ -23,9 +23,11 @@ export async function dispatchEmail(to, subject, text) {
   const isProd = process.env.NODE_ENV === 'production'
   
   if (isProd) {
-    // Determine the proxy URL (Vercel frontend)
-    // Render environment variables should have CLIENT_ORIGIN set to https://agrosense-jet.vercel.app
-    const proxyOrigin = process.env.CLIENT_ORIGIN || 'https://agrosense-jet.vercel.app'
+    // Ensure we don't accidentally try to hit localhost from the Render container
+    let proxyOrigin = process.env.CLIENT_ORIGIN || 'https://agrosense-jet.vercel.app'
+    if (proxyOrigin.includes('localhost') || proxyOrigin.includes('127.0.0.1')) {
+      proxyOrigin = 'https://agrosense-jet.vercel.app'
+    }
     const vercelProxyUrl = `${proxyOrigin}/api/send-email`
     
     try {
