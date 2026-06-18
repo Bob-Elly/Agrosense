@@ -204,8 +204,16 @@ function Settings() {
               </p>
               <form onSubmit={handleReauthenticate} className="flex flex-col gap-3 text-left">
                 <div>
-                  <div className="flex justify-between items-center mb-1">
-                    <label className="label mb-0" style={{ fontSize: '0.8rem' }}>Current Password</label>
+                  <label className="label mb-1" style={{ fontSize: '0.8rem' }}>Current Password</label>
+                  <input 
+                    type="password" 
+                    className="input w-full" 
+                    placeholder="••••••••" 
+                    value={reauthPassword}
+                    onChange={(e) => setReauthPassword(e.target.value)}
+                    required
+                  />
+                  <div className="flex justify-end mt-1">
                     <button 
                       type="button" 
                       style={{
@@ -223,14 +231,6 @@ function Settings() {
                       Forgot password?
                     </button>
                   </div>
-                  <input 
-                    type="password" 
-                    className="input w-full" 
-                    placeholder="••••••••" 
-                    value={reauthPassword}
-                    onChange={(e) => setReauthPassword(e.target.value)}
-                    required
-                  />
                 </div>
                 <button type="submit" className="btn btn-primary mt-2" disabled={reauthenticating}>
                   {reauthenticating ? 'Verifying...' : 'Unlock Account'}
