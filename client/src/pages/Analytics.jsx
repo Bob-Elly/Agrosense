@@ -81,10 +81,54 @@ function Analytics() {
 
   return (
     <div className="page">
+      <style>{`
+        .accordion {
+          background: var(--color-surface-card);
+          border: 1px solid var(--color-border);
+          border-radius: var(--radius-lg);
+          margin-bottom: var(--space-4);
+          box-shadow: var(--shadow-sm);
+        }
+        .accordion[open] .accordion-summary {
+          border-bottom: 1px solid var(--color-border-soft);
+        }
+        .accordion-summary {
+          padding: var(--space-4);
+          font-size: 1.1rem;
+          font-weight: 600;
+          cursor: pointer;
+          list-style: none;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          user-select: none;
+        }
+        .accordion-summary::-webkit-details-marker {
+          display: none;
+        }
+        .accordion-summary-content {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          width: 100%;
+        }
+        .accordion-icon {
+          transition: transform 0.3s ease;
+          font-size: 0.8rem;
+          color: var(--color-text-dim);
+        }
+        .accordion[open] .accordion-icon {
+          transform: rotate(180deg);
+        }
+        .accordion-content {
+          padding: var(--space-4);
+        }
+      `}</style>
+
       {/* ── Header ── */}
       <header style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-5)' }}>
         <button id="back-from-analytics" className="btn btn-ghost btn-sm"
-          onClick={() => navigate(`/node/${deviceId}`)}>← Back</button>
+          onClick={() => navigate('/analytics')}>← Hub</button>
         <div style={{ flex: 1 }}>
           <h1 style={{ fontSize: 'var(--font-xl)', fontWeight: 700 }}>Analytics</h1>
           <p className="text-xs text-muted">{deviceId}</p>
@@ -92,145 +136,178 @@ function Analytics() {
         <ThemeToggle />
       </header>
 
+      {/* ── AI Suggestions (Open by default) ── */}
+      <details className="accordion" open>
+        <summary className="accordion-summary">
+          <div className="accordion-summary-content">
+            <span>✨ AI Crop Recommendations</span>
+            <span className="accordion-icon">▼</span>
+          </div>
+        </summary>
+        <div className="accordion-content">
+          {!suggestion && !aiLoading && (
+            <>
+              <p className="text-sm text-muted" style={{ marginBottom: 'var(--space-4)' }}>
+                Get personalised, Gemini-powered advice based on your latest sensor readings
+                and optimal ranges for your selected crop.
+              </p>
+              <button id="get-suggestions-btn" className="btn btn-primary w-full"
+                onClick={() => fetchSuggestions(true)} disabled={aiLoading}>
+                ✨ Generate AI Suggestions
+              </button>
+            </>
+          )}
 
-
-      {/* ── Trend Charts & History ── */}
-      <div className="flex items-center justify-between" style={{ marginBottom: 'var(--space-4)' }}>
-        <p className="section-title" style={{ margin: 0 }}>Trend Analysis</p>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-          <select className="select" value={timeRange} onChange={e => setTimeRange(e.target.value)}
-            style={{ width: '120px', padding: '0.35rem 0.6rem', fontSize: 'var(--font-sm)' }}>
-            <option value="24h">Last 24 Hours</option>
-            <option value="7d">Last 7 Days</option>
-            <option value="30d">Last 30 Days</option>
-          </select>
-        </div>
-      </div>
-
-      {histError && <p className="error-message" style={{ marginBottom: 'var(--space-3)' }}>{histError}</p>}
-
-      {histLoading ? (
-        <div className="flex items-center gap-3" style={{ padding: 'var(--space-4) 0', marginBottom: 'var(--space-4)' }}>
-          <div className="spinner" /><span className="text-sm text-muted">Loading history…</span>
-        </div>
-      ) : (
-        <>
-          <TrendCharts readings={readings} />
-          
-          <div className="flex items-center justify-between" style={{ marginBottom: 'var(--space-3)', marginTop: 'var(--space-4)' }}>
-            <p className="section-title" style={{ margin: 0 }}>Raw Data</p>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-              <label className="text-xs text-muted" htmlFor="hist-limit">Show</label>
-              <select id="hist-limit" className="select" value={tableLimit} onChange={e => setTableLimit(Number(e.target.value))}
-                style={{ width: '70px', padding: '0.25rem 0.5rem', fontSize: 'var(--font-xs)' }}>
-                {[20, 50, 100, 200, 500].map(n => <option key={n} value={n}>{n}</option>)}
-              </select>
+          {aiLoading && (
+            <div className="flex items-center gap-3" style={{ padding: 'var(--space-4) 0' }}>
+              <div className="spinner" />
+              <span className="text-sm text-muted">Analysing soil data with Gemini…</span>
             </div>
-          </div>
+          )}
 
-      {readings.length === 0 && !histLoading ? (
-        <div className="card text-center" style={{ padding: 'var(--space-6)', marginBottom: 'var(--space-5)' }}>
-          <p className="text-muted text-sm">No readings recorded yet.</p>
-        </div>
-      ) : readings.length > 0 && (
-        <div className="table-scroll" style={{ marginBottom: 'var(--space-6)' }}>
-          <table>
-            <thead><tr>
-              <th>Time</th><th>Moist%</th><th>Temp°C</th><th>Hum%</th>
-              <th>N</th><th>P</th><th>K</th><th>pH</th>
-            </tr></thead>
-            <tbody>
-              {readings.slice(0, tableLimit).map(r => (
-                <tr key={r.id}>
-                  <td style={{ whiteSpace: 'nowrap', color: 'var(--color-text-muted)' }}>{fmtT(r.timestamp)}</td>
-                  <td style={{ color: 'var(--color-accent)',   fontWeight: 600 }}>{v(r.moisture)}</td>
-                  <td style={{ color: 'var(--color-warning)' }}>{v(r.temperature)}</td>
-                  <td>{v(r.humidity)}</td>
-                  <td style={{ color: 'var(--color-primary)' }}>{v(r.nitrogen, 0)}</td>
-                  <td style={{ color: 'var(--color-warning)' }}>{v(r.phosphorus, 0)}</td>
-                  <td style={{ color: 'var(--color-accent)'  }}>{v(r.potassium, 0)}</td>
-                  <td style={{ color: 'var(--color-primary)' }}>{v(r.ph)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      </>
-      )}
-
-      {/* ── AI Suggestions ── */}
-      <p className="section-title">AI Crop Recommendations</p>
-      <div className="card" style={{ marginBottom: 'var(--space-5)' }}>
-        {!suggestion && !aiLoading && (
-          <>
-            <p className="text-sm text-muted" style={{ marginBottom: 'var(--space-4)' }}>
-              Get personalised, Gemini-powered advice based on your latest sensor readings
-              and optimal ranges for your selected crop.
-            </p>
-            <button id="get-suggestions-btn" className="btn btn-primary w-full"
-              onClick={() => fetchSuggestions(true)} disabled={aiLoading}>
-              ✨ Generate AI Suggestions
-            </button>
-          </>
-        )}
-
-        {aiLoading && (
-          <div className="flex items-center gap-3" style={{ padding: 'var(--space-4) 0' }}>
-            <div className="spinner" />
-            <span className="text-sm text-muted">Analysing soil data with Gemini…</span>
-          </div>
-        )}
-
-        {aiError && (
-          <div>
-            <p className="error-message">{aiError}</p>
-            <button className="btn btn-ghost btn-sm" style={{ marginTop: 'var(--space-3)' }} onClick={() => fetchSuggestions(true)}>
-              Try again
-            </button>
-          </div>
-        )}
-
-        {suggestion && (
-          <div>
-            <div className="flex items-center justify-between" style={{ marginBottom: 'var(--space-4)' }}>
-              <div>
-                <p className="text-xs text-muted">Crop: <strong className="text-primary">{suggestion.crop}</strong></p>
-                <p className="text-xs text-dim" style={{ marginTop: '2px' }}>
-                  Generated {timeAgo(suggestion.generatedAt)}
-                </p>
-              </div>
-              <button id="refresh-suggestions-btn" className="btn btn-ghost btn-sm"
-                onClick={() => fetchSuggestions(true)} disabled={aiLoading}>Refresh</button>
+          {aiError && (
+            <div>
+              <p className="error-message">{aiError}</p>
+              <button className="btn btn-ghost btn-sm" style={{ marginTop: 'var(--space-3)' }} onClick={() => fetchSuggestions(true)}>
+                Try again
+              </button>
             </div>
+          )}
 
-            {/* AI response text */}
-            <div style={{
-              background: 'var(--color-surface-alt)',
-              borderRadius: 'var(--radius-md)',
-              padding: 'var(--space-4)',
-              border: '1px solid var(--color-border-soft)',
-              borderLeft: '3px solid var(--color-primary)',
-              lineHeight: 1.75,
-            }}>
-              {suggestion.recommendation.split('\n').map((line, i) => {
-                if (!line.trim()) return null
-                const isWarn = /warning|urgent|critical/i.test(line)
-                return (
-                  <p key={i} style={{
-                    fontSize: 'var(--font-sm)',
-                    color: isWarn ? 'var(--color-warning)' : 'var(--color-text)',
-                    marginBottom: '0.4rem',
-                    paddingLeft: line.trim().startsWith('-') || line.trim().startsWith('•') ? '0.75rem' : undefined,
-                  }}>
-                    {line}
+          {suggestion && (
+            <div>
+              <div className="flex items-center justify-between" style={{ marginBottom: 'var(--space-4)' }}>
+                <div>
+                  <p className="text-xs text-muted">Crop: <strong className="text-primary">{suggestion.crop}</strong></p>
+                  <p className="text-xs text-dim" style={{ marginTop: '2px' }}>
+                    Generated {timeAgo(suggestion.generatedAt)}
                   </p>
-                )
-              })}
+                </div>
+                <button id="refresh-suggestions-btn" className="btn btn-ghost btn-sm"
+                  onClick={() => fetchSuggestions(true)} disabled={aiLoading}>Refresh</button>
+              </div>
+
+              {/* AI response text */}
+              <div style={{
+                background: 'var(--color-surface-alt)',
+                borderRadius: 'var(--radius-md)',
+                padding: 'var(--space-4)',
+                border: '1px solid var(--color-border-soft)',
+                borderLeft: '3px solid var(--color-primary)',
+                lineHeight: 1.75,
+              }}>
+                {suggestion.recommendation.split('\n').map((line, i) => {
+                  if (!line.trim()) return null
+                  const isWarn = /warning|urgent|critical/i.test(line)
+                  return (
+                    <p key={i} style={{
+                      fontSize: 'var(--font-sm)',
+                      color: isWarn ? 'var(--color-warning)' : 'var(--color-text)',
+                      marginBottom: '0.4rem',
+                      paddingLeft: line.trim().startsWith('-') || line.trim().startsWith('•') ? '0.75rem' : undefined,
+                    }}>
+                      {line}
+                    </p>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      </details>
+
+      {/* ── Trend Charts ── */}
+      <details className="accordion">
+        <summary className="accordion-summary">
+          <div className="accordion-summary-content">
+            <span>📈 Trend Analysis</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+              <select 
+                className="select" 
+                value={timeRange} 
+                onChange={e => setTimeRange(e.target.value)}
+                onClick={e => e.stopPropagation()}
+                style={{ width: '120px', padding: '0.2rem 0.5rem', fontSize: 'var(--font-sm)' }}
+              >
+                <option value="24h">Last 24 Hours</option>
+                <option value="7d">Last 7 Days</option>
+                <option value="30d">Last 30 Days</option>
+              </select>
+              <span className="accordion-icon">▼</span>
             </div>
           </div>
-        )}
-      </div>
+        </summary>
+        <div className="accordion-content">
+          {histError && <p className="error-message" style={{ marginBottom: 'var(--space-3)' }}>{histError}</p>}
+          {histLoading ? (
+            <div className="flex items-center gap-3" style={{ padding: 'var(--space-4) 0' }}>
+              <div className="spinner" /><span className="text-sm text-muted">Loading history…</span>
+            </div>
+          ) : (
+            <TrendCharts readings={readings} />
+          )}
+        </div>
+      </details>
+
+      {/* ── Raw Data ── */}
+      <details className="accordion">
+        <summary className="accordion-summary">
+          <div className="accordion-summary-content">
+            <span>📋 Raw Data</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                <label className="text-xs text-muted" htmlFor="hist-limit">Show</label>
+                <select 
+                  id="hist-limit" 
+                  className="select" 
+                  value={tableLimit} 
+                  onChange={e => setTableLimit(Number(e.target.value))}
+                  onClick={e => e.stopPropagation()}
+                  style={{ width: '70px', padding: '0.2rem 0.5rem', fontSize: 'var(--font-xs)' }}
+                >
+                  {[20, 50, 100, 200, 500].map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </div>
+              <span className="accordion-icon">▼</span>
+            </div>
+          </div>
+        </summary>
+        <div className="accordion-content">
+          {histLoading ? (
+            <div className="flex items-center gap-3" style={{ padding: 'var(--space-4) 0' }}>
+              <div className="spinner" /><span className="text-sm text-muted">Loading history…</span>
+            </div>
+          ) : readings.length === 0 ? (
+            <div className="card text-center" style={{ padding: 'var(--space-6)', border: 'none', boxShadow: 'none' }}>
+              <p className="text-muted text-sm">No readings recorded yet.</p>
+            </div>
+          ) : (
+            <div className="table-scroll">
+              <table>
+                <thead><tr>
+                  <th>Time</th><th>Moist%</th><th>Temp°C</th><th>Hum%</th>
+                  <th>N</th><th>P</th><th>K</th><th>pH</th>
+                </tr></thead>
+                <tbody>
+                  {readings.slice(0, tableLimit).map(r => (
+                    <tr key={r.id}>
+                      <td style={{ whiteSpace: 'nowrap', color: 'var(--color-text-muted)' }}>{fmtT(r.timestamp)}</td>
+                      <td style={{ color: 'var(--color-accent)',   fontWeight: 600 }}>{v(r.moisture)}</td>
+                      <td style={{ color: 'var(--color-warning)' }}>{v(r.temperature)}</td>
+                      <td>{v(r.humidity)}</td>
+                      <td style={{ color: 'var(--color-primary)' }}>{v(r.nitrogen, 0)}</td>
+                      <td style={{ color: 'var(--color-warning)' }}>{v(r.phosphorus, 0)}</td>
+                      <td style={{ color: 'var(--color-accent)'  }}>{v(r.potassium, 0)}</td>
+                      <td style={{ color: 'var(--color-primary)' }}>{v(r.ph)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </details>
+
     </div>
   )
 }

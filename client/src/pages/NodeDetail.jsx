@@ -485,11 +485,12 @@ function NodeDetail() {
       </div>
 
       {/* ── Analytics CTA ── */}
-      <button id="analytics-btn" className="btn w-full"
-        onClick={() => navigate(`/analytics/${deviceId}`)}
-        style={{ border: '1px solid var(--color-primary)', color: 'var(--color-primary)', background: 'var(--color-primary-muted)' }}>
-        📊 View Analytics &amp; AI Suggestions
-      </button>
+      <div style={{ textAlign: 'center', marginTop: 'var(--space-2)' }}>
+        <button id="analytics-btn" className="btn btn-ghost btn-sm text-primary"
+          onClick={() => navigate(`/analytics/${deviceId}`)}>
+          View Analytics & AI Suggestions
+        </button>
+      </div>
 
       {/* ── Toast notification ── */}
       {toast && (
