@@ -185,7 +185,7 @@ function LinkDevice() {
         { merge: true }
       )
 
-      // Emit Notification
+      // Emit Notification (In-App)
       await addDoc(collection(db, 'users', currentUser.uid, 'notifications'), {
         title: 'Node Linked',
         message: `Device ${label.trim() || trimmedId} was successfully added to your account.`,
@@ -193,6 +193,18 @@ function LinkDevice() {
         read: false,
         timestamp: new Date()
       })
+
+      // Dispatch Email Notification via backend
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000'
+      fetch(`${apiUrl}/api/notifications/node-linked`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          email: currentUser.email, 
+          deviceId: trimmedId, 
+          label: label.trim() 
+        })
+      }).catch(err => console.error('Failed to dispatch email:', err))
 
       setToast({ message: `"${label.trim() || trimmedId}" linked successfully!`, type: 'success' })
       setDeviceId(''); setLabel(''); setCrop('')
