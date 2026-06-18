@@ -1,10 +1,19 @@
 // server/routes/auth.js
 import express from 'express'
-import { Resend } from 'resend'
+import nodemailer from 'nodemailer'
 import admin, { db } from '../config/firebaseAdmin.js'
 
 const router = express.Router()
-const resend = new Resend(process.env.RESEND_API_KEY || 're_dummy_key')
+
+// Create a nodemailer transporter using Gmail
+// This is completely free and allows sending to anyone!
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.EMAIL_USER, // Your Gmail address
+    pass: process.env.EMAIL_PASS  // Your 16-character Gmail App Password
+  }
+})
 
 /**
  * POST /api/auth/send-verification-code
@@ -24,8 +33,6 @@ router.post('/send-verification-code', async (req, res) => {
       userRecord = await admin.auth().getUserByEmail(email)
     } catch (err) {
       if (err.code === 'auth/user-not-found') {
-        // We still return 200 to prevent email enumeration attacks,
-        // but we don't actually send an email or store a code.
         return res.json({ message: 'If this email is registered, a code has been sent.' })
       }
       throw err
@@ -41,10 +48,11 @@ router.post('/send-verification-code', async (req, res) => {
       expiresAt: Date.now() + 10 * 60 * 1000
     })
 
-    // 4. Send email via Resend
-    if (!process.env.RESEND_API_KEY) {
-      console.warn('RESEND_API_KEY not set. Check Firestore for the code during local testing.', code)
-      // Return early in dev mode if no key (for testing without sending real emails)
+    // 4. Send email via Nodemailer
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+      console.warn('\n⚠️  EMAIL_USER or EMAIL_PASS not set in .env! Skipping real email dispatch.')
+      console.warn(`📩  DEV MODE CODE FOR ${email}: ${code}\n`)
+      // Return early in dev mode if no credentials
       return res.json({ message: 'If this email is registered, a code has been sent.', devCode: code })
     }
 
@@ -56,18 +64,12 @@ router.post('/send-verification-code', async (req, res) => {
       ? `Hello,\n\nYour password reset code is: ${code}\n\nThis code will expire in 10 minutes.\nIf you did not request this, please ignore this email.\n\n- AgroSense`
       : `Hello,\n\nWelcome to AgroSense! Your email verification code is: ${code}\n\nThis code will expire in 10 minutes.\n\n- AgroSense`
 
-    const { data, error: resendError } = await resend.emails.send({
-      from: 'AgroSense <onboarding@resend.dev>',
+    await transporter.sendMail({
+      from: `"AgroSense" <${process.env.EMAIL_USER}>`,
       to: email,
       subject,
       text
     })
-
-    if (resendError) {
-      console.error('Resend API Error:', resendError)
-      // Throw so it gets caught by the catch block
-      throw new Error(`Resend Error: ${resendError.message}`)
-    }
 
     res.json({ message: 'If this email is registered, a code has been sent.' })
   } catch (error) {
