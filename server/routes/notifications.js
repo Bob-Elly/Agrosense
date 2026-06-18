@@ -17,30 +17,12 @@ router.post('/node-linked', async (req, res) => {
   }
 
   try {
-    // Look up the user to respect email delivery preferences
-    // (Wait, user just linked a node, they definitely want this notification,
-    // but let's check preferences just to be safe, or just send it directly if they asked for it)
-    let wantsEmail = true
+    const nodeName = label || deviceId
+    const subject = `AgroSense: New Node Linked (${nodeName})`
+    const text = `Hello,\n\nThis is a confirmation that a new ESP32 sensor node has been successfully linked to your AgroSense account.\n\nNode Name: ${nodeName}\nDevice ID: ${deviceId}\n\nYou can now manage this node from your dashboard.\n\n- AgroSense`
     
-    try {
-      const userRecord = await admin.auth().getUserByEmail(email)
-      const userDoc = await db.collection('users').doc(userRecord.uid).get()
-      if (userDoc.exists) {
-        const prefs = userDoc.data().notificationPreferences || {}
-        wantsEmail = prefs.emailAlerts === true || prefs.deliveryMethod === 'email'
-      }
-    } catch (err) {
-      console.error('Error fetching user preferences for node-linked email:', err)
-      // Default to true if error
-    }
-
-    if (wantsEmail) {
-      const nodeName = label || deviceId
-      const subject = `AgroSense: New Node Linked (${nodeName})`
-      const text = `Hello,\n\nThis is a confirmation that a new ESP32 sensor node has been successfully linked to your AgroSense account.\n\nNode Name: ${nodeName}\nDevice ID: ${deviceId}\n\nYou can now manage this node from your dashboard.\n\n- AgroSense`
-      
-      await sendEmailNotification(email, subject, text)
-    }
+    // Always send the confirmation email for node linking, regardless of telemetry alert preferences
+    await sendEmailNotification(email, subject, text)
 
     res.json({ message: 'Notification processed.' })
   } catch (error) {
