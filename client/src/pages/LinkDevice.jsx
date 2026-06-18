@@ -197,6 +197,33 @@ function LinkDevice() {
         { merge: true }
       )
 
+      // Generate 24 hours of dummy historical data for the charts
+      import('firebase/firestore').then(async ({ writeBatch, doc: firestoreDoc, collection: firestoreCollection }) => {
+        try {
+          const batch = writeBatch(db)
+          const now = Date.now()
+          for (let i = 24; i >= 1; i--) {
+            const timestamp = new Date(now - i * 60 * 60 * 1000) // 1 hour intervals
+            const readingRef = firestoreDoc(firestoreCollection(db, 'telemetry', trimmedId, 'readings'))
+            batch.set(readingRef, {
+              moisture: parseFloat((Math.random() * (80 - 40) + 40).toFixed(1)),
+              temperature: parseFloat((Math.random() * (32 - 20) + 20).toFixed(1)),
+              humidity: parseFloat((Math.random() * (85 - 50) + 50).toFixed(1)),
+              ph: parseFloat((Math.random() * (7.5 - 5.0) + 5.0).toFixed(1)),
+              nitrogen: Math.floor(Math.random() * (80 - 20) + 20),
+              phosphorus: Math.floor(Math.random() * (40 - 10) + 10),
+              potassium: Math.floor(Math.random() * (150 - 60) + 60),
+              batteryMv: Math.floor(Math.random() * (4200 - 3500) + 3500),
+              timestamp,
+              receivedAt: timestamp
+            })
+          }
+          await batch.commit()
+        } catch (err) {
+          console.error('Failed to write dummy telemetry history:', err)
+        }
+      })
+
       // Emit Notification (In-App)
       await addDoc(collection(db, 'users', currentUser.uid, 'notifications'), {
         title: 'Node Linked',
