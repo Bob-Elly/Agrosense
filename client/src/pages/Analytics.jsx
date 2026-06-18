@@ -6,6 +6,7 @@ import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate }      from 'react-router-dom'
 import api                             from '../api/axiosInstance.js'
 import ThemeToggle                     from '../components/ThemeToggle.jsx'
+import TrendCharts                     from '../components/TrendCharts.jsx'
 
 function Analytics() {
   const { deviceId }                = useParams()
@@ -13,7 +14,8 @@ function Analytics() {
   const [readings, setReadings]     = useState([])
   const [histLoading, setHistLoading] = useState(false)
   const [histError, setHistError]   = useState('')
-  const [limit, setLimit]           = useState(50)
+  const [tableLimit, setTableLimit] = useState(50)
+  const [timeRange, setTimeRange]   = useState('24h') // 24h, 7d, 30d
   const [suggestion, setSuggestion] = useState(null)
   const [aiLoading, setAiLoading]   = useState(false)
   const [aiError, setAiError]       = useState('')
@@ -22,7 +24,7 @@ function Analytics() {
     if (deviceId) {
       fetchHistory()
     }
-  }, [deviceId, limit]) // eslint-disable-line
+  }, [deviceId, timeRange]) // eslint-disable-line
 
   useEffect(() => {
     if (deviceId) {
@@ -33,7 +35,20 @@ function Analytics() {
   async function fetchHistory() {
     setHistLoading(true); setHistError('')
     try {
-      const res = await api.get('/api/history', { params: { deviceId, limit } })
+      // Calculate from date based on timeRange
+      const now = new Date()
+      let fromDate = new Date()
+      if (timeRange === '24h') fromDate.setHours(now.getHours() - 24)
+      if (timeRange === '7d') fromDate.setDate(now.getDate() - 7)
+      if (timeRange === '30d') fromDate.setDate(now.getDate() - 30)
+
+      const res = await api.get('/api/history', { 
+        params: { 
+          deviceId, 
+          limit: 2000, // Fetch up to 2000 records for accurate charts
+          from: fromDate.toISOString()
+        } 
+      })
       setReadings(res.data.readings || [])
     } catch { setHistError('Failed to load history.') }
     finally { setHistLoading(false) }
@@ -76,6 +91,73 @@ function Analytics() {
         </div>
         <ThemeToggle />
       </header>
+
+
+
+      {/* ── Trend Charts & History ── */}
+      <div className="flex items-center justify-between" style={{ marginBottom: 'var(--space-4)' }}>
+        <p className="section-title" style={{ margin: 0 }}>Trend Analysis</p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+          <select className="select" value={timeRange} onChange={e => setTimeRange(e.target.value)}
+            style={{ width: '120px', padding: '0.35rem 0.6rem', fontSize: 'var(--font-sm)' }}>
+            <option value="24h">Last 24 Hours</option>
+            <option value="7d">Last 7 Days</option>
+            <option value="30d">Last 30 Days</option>
+          </select>
+        </div>
+      </div>
+
+      {histError && <p className="error-message" style={{ marginBottom: 'var(--space-3)' }}>{histError}</p>}
+
+      {histLoading ? (
+        <div className="flex items-center gap-3" style={{ padding: 'var(--space-4) 0', marginBottom: 'var(--space-4)' }}>
+          <div className="spinner" /><span className="text-sm text-muted">Loading history…</span>
+        </div>
+      ) : (
+        <>
+          <TrendCharts readings={readings} />
+          
+          <div className="flex items-center justify-between" style={{ marginBottom: 'var(--space-3)', marginTop: 'var(--space-4)' }}>
+            <p className="section-title" style={{ margin: 0 }}>Raw Data</p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+              <label className="text-xs text-muted" htmlFor="hist-limit">Show</label>
+              <select id="hist-limit" className="select" value={tableLimit} onChange={e => setTableLimit(Number(e.target.value))}
+                style={{ width: '70px', padding: '0.25rem 0.5rem', fontSize: 'var(--font-xs)' }}>
+                {[20, 50, 100, 200, 500].map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </div>
+          </div>
+
+      {readings.length === 0 && !histLoading ? (
+        <div className="card text-center" style={{ padding: 'var(--space-6)', marginBottom: 'var(--space-5)' }}>
+          <p className="text-muted text-sm">No readings recorded yet.</p>
+        </div>
+      ) : readings.length > 0 && (
+        <div className="table-scroll" style={{ marginBottom: 'var(--space-6)' }}>
+          <table>
+            <thead><tr>
+              <th>Time</th><th>Moist%</th><th>Temp°C</th><th>Hum%</th>
+              <th>N</th><th>P</th><th>K</th><th>pH</th>
+            </tr></thead>
+            <tbody>
+              {readings.slice(0, tableLimit).map(r => (
+                <tr key={r.id}>
+                  <td style={{ whiteSpace: 'nowrap', color: 'var(--color-text-muted)' }}>{fmtT(r.timestamp)}</td>
+                  <td style={{ color: 'var(--color-accent)',   fontWeight: 600 }}>{v(r.moisture)}</td>
+                  <td style={{ color: 'var(--color-warning)' }}>{v(r.temperature)}</td>
+                  <td>{v(r.humidity)}</td>
+                  <td style={{ color: 'var(--color-primary)' }}>{v(r.nitrogen, 0)}</td>
+                  <td style={{ color: 'var(--color-warning)' }}>{v(r.phosphorus, 0)}</td>
+                  <td style={{ color: 'var(--color-accent)'  }}>{v(r.potassium, 0)}</td>
+                  <td style={{ color: 'var(--color-primary)' }}>{v(r.ph)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      </>
+      )}
 
       {/* ── AI Suggestions ── */}
       <p className="section-title">AI Crop Recommendations</p>
@@ -149,55 +231,6 @@ function Analytics() {
           </div>
         )}
       </div>
-
-      <div className="divider" />
-
-      {/* ── History ── */}
-      <div className="flex items-center justify-between" style={{ marginBottom: 'var(--space-3)' }}>
-        <p className="section-title" style={{ margin: 0 }}>Historical Readings</p>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-          <label className="text-xs text-muted" htmlFor="hist-limit">Show</label>
-          <select id="hist-limit" className="select" value={limit} onChange={e => setLimit(Number(e.target.value))}
-            style={{ width: '70px', padding: '0.25rem 0.5rem', fontSize: 'var(--font-xs)' }}>
-            {[20, 50, 100, 200].map(n => <option key={n} value={n}>{n}</option>)}
-          </select>
-        </div>
-      </div>
-
-      {histError && <p className="error-message" style={{ marginBottom: 'var(--space-3)' }}>{histError}</p>}
-
-      {histLoading ? (
-        <div className="flex items-center gap-3" style={{ padding: 'var(--space-4) 0' }}>
-          <div className="spinner" /><span className="text-sm text-muted">Loading history…</span>
-        </div>
-      ) : readings.length === 0 ? (
-        <div className="card text-center" style={{ padding: 'var(--space-6)' }}>
-          <p className="text-muted text-sm">No readings recorded yet.</p>
-        </div>
-      ) : (
-        <div className="table-scroll">
-          <table>
-            <thead><tr>
-              <th>Time</th><th>Moist%</th><th>Temp°C</th><th>Hum%</th>
-              <th>N</th><th>P</th><th>K</th><th>pH</th>
-            </tr></thead>
-            <tbody>
-              {readings.map(r => (
-                <tr key={r.id}>
-                  <td style={{ whiteSpace: 'nowrap', color: 'var(--color-text-muted)' }}>{fmtT(r.timestamp)}</td>
-                  <td style={{ color: 'var(--color-accent)',   fontWeight: 600 }}>{v(r.moisture)}</td>
-                  <td style={{ color: 'var(--color-warning)' }}>{v(r.temperature)}</td>
-                  <td>{v(r.humidity)}</td>
-                  <td style={{ color: 'var(--color-primary)' }}>{v(r.nitrogen, 0)}</td>
-                  <td style={{ color: 'var(--color-warning)' }}>{v(r.phosphorus, 0)}</td>
-                  <td style={{ color: 'var(--color-accent)'  }}>{v(r.potassium, 0)}</td>
-                  <td style={{ color: 'var(--color-primary)' }}>{v(r.ph)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
     </div>
   )
 }

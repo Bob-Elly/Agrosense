@@ -26,7 +26,7 @@ router.get('/', async (req, res, next) => {
     }
 
     // Parse and clamp the limit (prevent overly large queries)
-    const MAX_LIMIT = 200
+    const MAX_LIMIT = 2000
     const parsedLimit = Math.min(parseInt(limit, 10) || 50, MAX_LIMIT)
 
     // Start building the Firestore query
