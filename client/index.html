@@ -10,8 +10,12 @@
     <script>
       (function () {
         try {
-          var theme = localStorage.getItem('agrosense_theme') || 'dark';
-          document.documentElement.setAttribute('data-theme', theme);
+          var pref = localStorage.getItem('agrosense_theme_preference') || 'system';
+          var actual = pref;
+          if (pref === 'system') {
+            actual = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+          }
+          document.documentElement.setAttribute('data-theme', actual);
         } catch (e) {
           document.documentElement.setAttribute('data-theme', 'dark');
         }

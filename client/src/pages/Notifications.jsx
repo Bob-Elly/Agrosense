@@ -96,7 +96,7 @@ function Notifications() {
         <ThemeToggle />
       </div>
 
-      <div className="flex justify-end gap-2 mb-4">
+      <div className="flex items-center justify-between mb-4">
         <button className="btn btn-ghost btn-sm" onClick={markAllAsRead} disabled={notifications.every(n => n.read)}>
           Mark all as read
         </button>

@@ -3,10 +3,12 @@ import { updateProfile, updatePassword, EmailAuthProvider, reauthenticateWithCre
 import { doc, getDoc, setDoc } from 'firebase/firestore'
 import { auth, db } from '../firebase.js'
 import { useAuth } from '../context/AuthContext.jsx'
+import { useTheme } from '../hooks/useTheme.js'
 import ThemeToggle from '../components/ThemeToggle.jsx'
 
 function Settings() {
   const { currentUser } = useAuth()
+  const { theme, setThemePreference } = useTheme()
   
   // Account State
   const [displayName, setDisplayName] = useState('')
@@ -204,6 +206,13 @@ function Settings() {
             </div>
           ) : (
             <>
+              <div className="flex flex-col items-center mb-6">
+                <div className="avatar avatar-lg flex items-center justify-center mb-2" style={{ fontSize: '2.5rem', fontWeight: 600, width: '80px', height: '80px', borderRadius: '50%', backgroundColor: 'var(--color-primary-muted)', color: 'var(--color-primary)' }}>
+                  {defaultInitial}
+                </div>
+                <div className="text-lg font-semibold">{currentUser?.displayName || 'Farmer'}</div>
+                <div className="text-sm text-muted">{currentUser?.email}</div>
+              </div>
               <form onSubmit={handleAccountUpdate}>
                 <div className="form-group">
                   <label className="label">Display Name</label>
@@ -327,6 +336,23 @@ function Settings() {
               </button>
             </div>
           )}
+        </div>
+
+        {/* ── Theme Section ── */}
+        <div className="card">
+          <h3 className="section-title mb-4">App Theme</h3>
+          <p className="text-sm text-muted mb-4">Choose your preferred appearance. This will be applied every time you open AgroSense.</p>
+          <div className="form-group mb-0">
+            <select 
+              className="select" 
+              value={theme}
+              onChange={(e) => setThemePreference(e.target.value)}
+            >
+              <option value="system">System Default</option>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
+          </div>
         </div>
 
       </div>

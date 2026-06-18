@@ -140,9 +140,6 @@ function Dashboard() {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
           <ThemeToggle />
-          <button id="sign-out-btn" className="btn btn-ghost btn-sm" onClick={() => signOut(auth).then(() => navigate('/'))}>
-            Sign out
-          </button>
         </div>
       </header>
 
