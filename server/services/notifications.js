@@ -10,8 +10,8 @@ const transporter = nodemailer.createTransport({
     pass: process.env.EMAIL_PASS
   }
 })
- * Creates an in-app notification in Firestore.
- */
+/* Creates an in -app notification in Firestore.
+*/
 export async function createInAppNotification(userId, title, message, type = 'info') {
   try {
     await db.collection('users').doc(userId).collection('notifications').add({
@@ -120,7 +120,7 @@ export async function processTelemetryAlerts(deviceId, reading) {
       const title = `Node Online: ${device.label || deviceId}`
       const message = `Device has reconnected and sent new telemetry.`
       await createInAppNotification(ownerId, title, message, 'success')
-      
+
       const wantsEmail = prefs.emailAlerts === true || prefs.deliveryMethod === 'email'
       if (wantsEmail && userEmail) {
         await sendEmailNotification(userEmail, title, `Your device ${device.label || deviceId} is back online.`)
