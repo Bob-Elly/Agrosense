@@ -70,6 +70,7 @@ function CropLibrary() {
   const [crops, setCrops] = useState([])
   const [loading, setLoading] = useState(true)
   const [activeCropId, setActiveCropId] = useState(null)
+  const [viewMode, setViewMode] = useState('chart') // 'chart' or 'data'
 
   useEffect(() => {
     const fetchCrops = async () => {
@@ -240,31 +241,67 @@ function CropLibrary() {
                 )}
               </div>
 
-              {/* Radar Chart */}
-              <div style={{ width: '100%', height: 350, background: 'var(--color-surface-alt)', borderTop: '1px solid var(--color-border-soft)', borderBottom: '1px solid var(--color-border-soft)' }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <RadarChart cx="50%" cy="50%" outerRadius="70%" data={radarData}>
-                    <PolarGrid stroke="var(--color-border-soft)" />
-                    <PolarAngleAxis dataKey="subject" tick={{ fill: 'var(--color-text-dim)', fontSize: 11 }} />
-                    <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
-                    <Tooltip content={<RadarTooltip />} />
-                    <Radar 
-                      name="Maximum" 
-                      dataKey="maxNorm" 
-                      stroke="rgba(0, 230, 118, 0.4)" 
-                      fill="var(--color-primary)" 
-                      fillOpacity={0.2} 
-                    />
-                    <Radar 
-                      name="Minimum" 
-                      dataKey="minNorm" 
-                      stroke="var(--color-primary)" 
-                      fill="var(--color-bg)" 
-                      fillOpacity={1} 
-                    />
-                  </RadarChart>
-                </ResponsiveContainer>
-              </div>
+              {/* Dynamic View: Chart or Data */}
+              {viewMode === 'chart' ? (
+                <div style={{ width: '100%', height: 350, background: 'var(--color-surface-alt)', borderTop: '1px solid var(--color-border-soft)', borderBottom: '1px solid var(--color-border-soft)' }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <RadarChart cx="50%" cy="50%" outerRadius="70%" data={radarData}>
+                      <PolarGrid stroke="var(--color-border-soft)" />
+                      <PolarAngleAxis dataKey="subject" tick={{ fill: 'var(--color-text-dim)', fontSize: 11 }} />
+                      <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
+                      <Tooltip content={<RadarTooltip />} />
+                      <Radar 
+                        name="Maximum" 
+                        dataKey="maxNorm" 
+                        stroke="rgba(0, 230, 118, 0.4)" 
+                        fill="var(--color-primary)" 
+                        fillOpacity={0.2} 
+                      />
+                      <Radar 
+                        name="Minimum" 
+                        dataKey="minNorm" 
+                        stroke="var(--color-primary)" 
+                        fill="var(--color-bg)" 
+                        fillOpacity={1} 
+                      />
+                    </RadarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div style={{ padding: 'var(--space-4)', background: 'var(--color-surface-alt)', borderTop: '1px solid var(--color-border-soft)', borderBottom: '1px solid var(--color-border-soft)' }}>
+                  <div className="text-xs font-semibold text-muted uppercase tracking-wider mb-2">Optimal Soil Conditions</div>
+                  <div className="flex flex-col gap-2" style={{ marginBottom: '2rem' }}>
+                    <div className="flex justify-between">
+                      <span className="text-muted">Moisture:</span>
+                      <span className="font-semibold">{activeCrop.moisture?.min}% - {activeCrop.moisture?.max}%</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted">Temperature:</span>
+                      <span className="font-semibold">{activeCrop.temperature?.min}°C - {activeCrop.temperature?.max}°C</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted">pH Level:</span>
+                      <span className="font-semibold">{activeCrop.ph?.min} - {activeCrop.ph?.max}</span>
+                    </div>
+                  </div>
+                  
+                  <div className="text-xs font-semibold text-muted uppercase tracking-wider mb-2">Optimal Nutrients (mg/kg)</div>
+                  <div className="flex flex-col gap-2">
+                    <div className="flex justify-between">
+                      <span className="text-muted">Nitrogen (N):</span>
+                      <span className="font-semibold">{activeCrop.nitrogen?.min} - {activeCrop.nitrogen?.max}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted">Phosphorus (P):</span>
+                      <span className="font-semibold">{activeCrop.phosphorus?.min} - {activeCrop.phosphorus?.max}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted">Potassium (K):</span>
+                      <span className="font-semibold">{activeCrop.potassium?.min} - {activeCrop.potassium?.max}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Educational Section */}
               <div style={{ padding: 'var(--space-4)', background: 'var(--color-surface-card)' }}>
@@ -306,6 +343,16 @@ function CropLibrary() {
                       {getCategoryInfo(getCropCategory(activeCrop.name)).yieldInc}
                     </span>
                   </div>
+                </div>
+
+                <div style={{ marginTop: 'var(--space-4)', textAlign: 'center' }}>
+                  <button 
+                    className="btn btn-ghost w-full" 
+                    onClick={() => setViewMode(prev => prev === 'chart' ? 'data' : 'chart')}
+                    style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-muted)' }}
+                  >
+                    {viewMode === 'chart' ? '📋 View Raw Data List' : '🕸️ View Radar Chart'}
+                  </button>
                 </div>
               </div>
             </div>
