@@ -56,12 +56,18 @@ router.post('/send-verification-code', async (req, res) => {
       ? `Hello,\n\nYour password reset code is: ${code}\n\nThis code will expire in 10 minutes.\nIf you did not request this, please ignore this email.\n\n- AgroSense`
       : `Hello,\n\nWelcome to AgroSense! Your email verification code is: ${code}\n\nThis code will expire in 10 minutes.\n\n- AgroSense`
 
-    await resend.emails.send({
+    const { data, error: resendError } = await resend.emails.send({
       from: 'AgroSense <onboarding@resend.dev>',
       to: email,
       subject,
       text
     })
+
+    if (resendError) {
+      console.error('Resend API Error:', resendError)
+      // Throw so it gets caught by the catch block
+      throw new Error(`Resend Error: ${resendError.message}`)
+    }
 
     res.json({ message: 'If this email is registered, a code has been sent.' })
   } catch (error) {
