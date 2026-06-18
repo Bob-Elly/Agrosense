@@ -69,7 +69,16 @@ function Login() {
                     <label className="label mb-0" htmlFor="login-password">Password</label>
                     <button 
                       type="button" 
-                      className="text-xs text-primary bg-transparent border-0 cursor-pointer p-0"
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: 'var(--color-text-muted)',
+                        fontSize: '0.75rem',
+                        cursor: 'pointer',
+                        padding: 0
+                      }}
+                      onMouseOver={(e) => e.target.style.color = 'var(--color-accent)'}
+                      onMouseOut={(e) => e.target.style.color = 'var(--color-text-muted)'}
                       onClick={() => setForgotPassword(true)}
                     >
                       Forgot password?
