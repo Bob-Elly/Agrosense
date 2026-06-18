@@ -1,19 +1,9 @@
 // server/routes/auth.js
 import express from 'express'
-import nodemailer from 'nodemailer'
 import admin, { db } from '../config/firebaseAdmin.js'
+import { dispatchEmail } from '../services/emailService.js'
 
 const router = express.Router()
-
-// Create a nodemailer transporter using Gmail
-// This is completely free and allows sending to anyone!
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER, // Your Gmail address
-    pass: process.env.EMAIL_PASS  // Your 16-character Gmail App Password
-  }
-})
 
 /**
  * POST /api/auth/send-verification-code
@@ -64,12 +54,7 @@ router.post('/send-verification-code', async (req, res) => {
       ? `Hello,\n\nYour password reset code is: ${code}\n\nThis code will expire in 10 minutes.\nIf you did not request this, please ignore this email.\n\n- AgroSense`
       : `Hello,\n\nWelcome to AgroSense! Your email verification code is: ${code}\n\nThis code will expire in 10 minutes.\n\n- AgroSense`
 
-    await transporter.sendMail({
-      from: `"AgroSense" <${process.env.EMAIL_USER}>`,
-      to: email,
-      subject,
-      text
-    })
+    await dispatchEmail(email, subject, text)
 
     res.json({ message: 'If this email is registered, a code has been sent.' })
   } catch (error) {

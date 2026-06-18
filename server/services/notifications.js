@@ -1,15 +1,7 @@
 // server/services/notifications.js
-import nodemailer from 'nodemailer'
 import { db } from '../config/firebaseAdmin.js'
+import { dispatchEmail } from './emailService.js'
 
-// Initialize Nodemailer transporter with Gmail
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS
-  }
-})
 /* Creates an in -app notification in Firestore.
 */
 export async function createInAppNotification(userId, title, message, type = 'info') {
@@ -27,23 +19,10 @@ export async function createInAppNotification(userId, title, message, type = 'in
 }
 
 /**
- * Sends an email using Nodemailer if the user has enabled email delivery.
+ * Sends an email using the central dispatch service.
  */
 export async function sendEmailNotification(userEmail, subject, text) {
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-    console.warn('EMAIL_USER/EMAIL_PASS not found. Skipping email to:', userEmail)
-    return
-  }
-  try {
-    await transporter.sendMail({
-      from: `"AgroSense Alerts" <${process.env.EMAIL_USER}>`,
-      to: userEmail,
-      subject,
-      text
-    })
-  } catch (err) {
-    console.error('Failed to send email:', err)
-  }
+  await dispatchEmail(userEmail, subject, text)
 }
 
 /**
