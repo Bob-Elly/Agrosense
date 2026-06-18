@@ -1,11 +1,15 @@
 // server/services/notifications.js
-import { Resend } from 'resend'
+import nodemailer from 'nodemailer'
 import { db } from '../config/firebaseAdmin.js'
 
-// Initialize Resend with API key from environment
-const resend = new Resend(process.env.RESEND_API_KEY || 're_dummy_key')
-
-/**
+// Initialize Nodemailer transporter with Gmail
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS
+  }
+})
  * Creates an in-app notification in Firestore.
  */
 export async function createInAppNotification(userId, title, message, type = 'info') {
@@ -23,16 +27,16 @@ export async function createInAppNotification(userId, title, message, type = 'in
 }
 
 /**
- * Sends an email using Resend if the user has enabled email delivery.
+ * Sends an email using Nodemailer if the user has enabled email delivery.
  */
 export async function sendEmailNotification(userEmail, subject, text) {
-  if (!process.env.RESEND_API_KEY) {
-    console.warn('RESEND_API_KEY not found. Skipping email to:', userEmail)
+  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+    console.warn('EMAIL_USER/EMAIL_PASS not found. Skipping email to:', userEmail)
     return
   }
   try {
-    await resend.emails.send({
-      from: 'AgroSense Alerts <onboarding@resend.dev>',
+    await transporter.sendMail({
+      from: `"AgroSense Alerts" <${process.env.EMAIL_USER}>`,
       to: userEmail,
       subject,
       text
