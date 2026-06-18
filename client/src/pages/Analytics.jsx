@@ -46,7 +46,7 @@ function Analytics() {
       const res = await api.get(`/api/suggestions/${deviceId}${force ? '?force=true' : ''}`)
       setSuggestion(res.data)
     } catch (err) {
-      setAiError(err.response?.data?.error || 'Failed to generate suggestions. Ensure GEMINI_API_KEY is set in server/.env')
+      setAiError(err.response?.data?.error || 'Failed to generate suggestions.')
     } finally { setAiLoading(false) }
   }
 
