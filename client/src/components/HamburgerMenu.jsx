@@ -85,8 +85,8 @@ function HamburgerMenu() {
               {currentUser.photoURL ? (
                 <img src={currentUser.photoURL} alt="Profile" className="avatar" />
               ) : (
-                <div className="avatar flex items-center justify-center" style={{ fontSize: '1.2rem', fontWeight: 600 }}>
-                  {defaultInitial}
+                <div className="avatar flex items-center justify-center" style={{ backgroundColor: 'var(--color-primary-muted)' }}>
+                  <img src="/favicon.svg" alt="Default Avatar" style={{ width: '60%', height: '60%', objectFit: 'contain' }} />
                 </div>
               )}
               <div className="flex-col">

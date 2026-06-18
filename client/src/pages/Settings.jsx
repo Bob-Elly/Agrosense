@@ -240,9 +240,13 @@ function Settings() {
           ) : (
             <>
               <div className="flex flex-col items-center mb-6">
-                <div className="avatar avatar-lg flex items-center justify-center mb-2" style={{ fontSize: '2.5rem', fontWeight: 600, width: '80px', height: '80px', borderRadius: '50%', backgroundColor: 'var(--color-primary-muted)', color: 'var(--color-primary)' }}>
-                  {defaultInitial}
-                </div>
+                {currentUser.photoURL ? (
+                  <img src={currentUser.photoURL} alt="Profile" className="avatar avatar-lg mb-2" style={{ width: '80px', height: '80px', borderRadius: '50%', objectFit: 'cover' }} />
+                ) : (
+                  <div className="avatar avatar-lg flex items-center justify-center mb-2" style={{ width: '80px', height: '80px', borderRadius: '50%', backgroundColor: 'var(--color-primary-muted)' }}>
+                    <img src="/favicon.svg" alt="Default Avatar" style={{ width: '50%', height: '50%', objectFit: 'contain' }} />
+                  </div>
+                )}
                 <div className="text-lg font-semibold">{currentUser?.displayName || 'Farmer'}</div>
                 <div className="text-sm text-muted">{currentUser?.email}</div>
               </div>
