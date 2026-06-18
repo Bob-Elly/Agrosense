@@ -5,6 +5,7 @@ import { auth, db } from '../firebase.js'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useTheme } from '../hooks/useTheme.js'
 import ThemeToggle from '../components/ThemeToggle.jsx'
+import VerificationFlow from '../components/VerificationFlow.jsx'
 
 function Settings() {
   const { currentUser } = useAuth()
@@ -12,8 +13,9 @@ function Settings() {
   
   // Account State
   const [displayName, setDisplayName] = useState('')
-  const [password, setPassword] = useState('')
+  // Password state removed in favor of reset flow
   const [loadingAccount, setLoadingAccount] = useState(false)
+  const [resettingPassword, setResettingPassword] = useState(false)
 
   // Security State
   const [isAccountLocked, setIsAccountLocked] = useState(true)
@@ -101,16 +103,12 @@ function Settings() {
         await updateProfile(currentUser, { displayName })
         updates.name = displayName
       }
-      if (password.trim() !== '') {
-        await updatePassword(currentUser, password)
-      }
       
       // Sync display name to firestore user document if changed
       if (updates.name) {
         await setDoc(doc(db, 'users', currentUser.uid), { displayName }, { merge: true })
       }
       
-      setPassword('')
       showMessage('success', 'Account updated successfully')
       
       // Relock account for security
@@ -214,7 +212,7 @@ function Settings() {
                 <div className="text-sm text-muted">{currentUser?.email}</div>
               </div>
               <form onSubmit={handleAccountUpdate}>
-                <div className="form-group">
+                <div className="form-group mb-4">
                   <label className="label">Display Name</label>
                   <input 
                     type="text" 
@@ -225,22 +223,36 @@ function Settings() {
                   />
                 </div>
                 
-                <div className="form-group">
-                  <label className="label">New Password (leave blank to keep current)</label>
-                  <input 
-                    type="password" 
-                    className="input" 
-                    value={password} 
-                    onChange={(e) => setPassword(e.target.value)} 
-                    placeholder="••••••••" 
-                    minLength="6"
-                  />
-                </div>
-                
-                <button type="submit" className="btn btn-primary w-full mt-2" disabled={loadingAccount}>
+                <button type="submit" className="btn btn-primary w-full" disabled={loadingAccount}>
                   {loadingAccount ? 'Updating...' : 'Update Account'}
                 </button>
               </form>
+
+              <div className="divider" style={{ margin: '1.5rem 0' }}></div>
+
+              {resettingPassword ? (
+                <VerificationFlow 
+                  action="reset_password"
+                  initialEmail={currentUser.email}
+                  emailReadOnly={true}
+                  onSuccess={() => {
+                    setResettingPassword(false)
+                    showMessage('success', 'Password reset successfully.')
+                  }}
+                  onCancel={() => setResettingPassword(false)}
+                />
+              ) : (
+                <div className="form-group mb-0">
+                  <label className="label">Security</label>
+                  <button 
+                    className="btn btn-ghost w-full" 
+                    style={{ border: '1px solid var(--color-border)', justifyContent: 'center' }}
+                    onClick={() => setResettingPassword(true)}
+                  >
+                    Reset Password
+                  </button>
+                </div>
+              )}
             </>
           )}
         </div>

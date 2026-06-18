@@ -12,6 +12,7 @@ import React from 'react'
 import { Navigate, Outlet } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
 import HamburgerMenu from './HamburgerMenu.jsx'
+import VerificationFlow from './VerificationFlow.jsx'
 
 function ProtectedRoute() {
   const { currentUser, loading } = useAuth()
@@ -35,6 +36,32 @@ function ProtectedRoute() {
   // ② Auth is resolved and there is no user → redirect to login.
   if (!currentUser) {
     return <Navigate to="/" replace />
+  }
+
+  // ②.½ Auth is resolved, but email is not verified
+  if (!currentUser.emailVerified) {
+    return (
+      <div className="page-centered">
+        <div className="container">
+          <div className="card">
+            <div className="text-center mb-6">
+              <h2 className="mb-2">Verify Your Email</h2>
+              <p className="text-muted text-sm">Please verify your email address to access your dashboard.</p>
+            </div>
+            <VerificationFlow 
+              action="verify_email"
+              initialEmail={currentUser.email}
+              emailReadOnly={true}
+              onSuccess={async () => {
+                await currentUser.reload()
+                // Force a full reload to update the auth context properly
+                window.location.reload()
+              }}
+            />
+          </div>
+        </div>
+      </div>
+    )
   }
 
   // ③ Authenticated → render the matched child route with the global menu.

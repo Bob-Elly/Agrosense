@@ -13,6 +13,7 @@ import telemetryRouter  from './routes/telemetry.js'
 import commandRouter    from './routes/command.js'
 import historyRouter    from './routes/history.js'
 import suggestionsRouter from './routes/suggestions.js'
+import authRouter       from './routes/auth.js'
 
 // ── Firebase Admin initialisation (side-effect import) ───────────────────────
 import './config/firebaseAdmin.js'
@@ -39,6 +40,7 @@ app.use('/api/telemetry',   telemetryRouter)    // POST — receive ESP32 sensor
 app.use('/api/command',     commandRouter)      // POST — send commands to devices
 app.use('/api/history',     historyRouter)      // GET  — historical readings
 app.use('/api/suggestions', suggestionsRouter)  // GET  — AI crop recommendations
+app.use('/api/auth',        authRouter)         // POST — auth verification codes
 
 // ── Health check ─────────────────────────────────────────────────────────────
 app.get('/', (_req, res) => {

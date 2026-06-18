@@ -6,6 +6,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { signInWithEmailAndPassword } from 'firebase/auth'
 import { auth } from '../firebase.js'
 import ThemeToggle from '../components/ThemeToggle.jsx'
+import VerificationFlow from '../components/VerificationFlow.jsx'
 
 function Login() {
   const navigate            = useNavigate()
@@ -13,6 +14,7 @@ function Login() {
   const [password, setPass] = useState('')
   const [error, setError]   = useState('')
   const [loading, setLoading] = useState(false)
+  const [forgotPassword, setForgotPassword] = useState(false)
 
   async function handleSubmit(e) {
     e.preventDefault(); setError(''); setLoading(true)
@@ -35,30 +37,58 @@ function Login() {
           <h1 className="logo-gradient" style={{ fontSize: '2rem', fontWeight: 800, letterSpacing: '-0.02em' }}>
             🌱 AgroSense
           </h1>
-          <p className="text-muted" style={{ marginTop: '0.5rem' }}>Sign in to your account</p>
+          <p className="text-muted" style={{ marginTop: '0.5rem' }}>
+            {forgotPassword ? 'Reset your password' : 'Sign in to your account'}
+          </p>
         </div>
 
         <div className="card">
-          <form onSubmit={handleSubmit} noValidate>
-            <div className="form-group">
-              <label className="label" htmlFor="login-email">Email address</label>
-              <input id="login-email" className="input" type="email" placeholder="you@example.com"
-                value={email} onChange={e => setEmail(e.target.value)} required autoComplete="email" />
-            </div>
-            <div className="form-group">
-              <label className="label" htmlFor="login-password">Password</label>
-              <input id="login-password" className="input" type="password" placeholder="••••••••"
-                value={password} onChange={e => setPass(e.target.value)} required autoComplete="current-password" />
-            </div>
-            {error && <p className="error-message">{error}</p>}
-            <button id="login-submit" className="btn btn-primary w-full"
-              type="submit" disabled={loading} style={{ marginTop: '0.5rem' }}>
-              {loading ? 'Signing in…' : 'Sign In'}
-            </button>
-          </form>
-          <p className="text-muted text-center" style={{ marginTop: '1.5rem' }}>
-            Don't have an account? <Link to="/register">Create one</Link>
-          </p>
+          {forgotPassword ? (
+            <VerificationFlow 
+              action="reset_password"
+              initialEmail={email}
+              onSuccess={() => {
+                setForgotPassword(false)
+                setError('')
+                setPass('')
+                // We don't log them in automatically because verify-code updates the password in Admin SDK
+                // but doesn't return a client auth token. They just need to sign in with the new password.
+              }}
+              onCancel={() => setForgotPassword(false)}
+            />
+          ) : (
+            <>
+              <form onSubmit={handleSubmit} noValidate>
+                <div className="form-group">
+                  <label className="label" htmlFor="login-email">Email address</label>
+                  <input id="login-email" className="input" type="email" placeholder="you@example.com"
+                    value={email} onChange={e => setEmail(e.target.value)} required autoComplete="email" />
+                </div>
+                <div className="form-group">
+                  <div className="flex justify-between items-center">
+                    <label className="label mb-0" htmlFor="login-password">Password</label>
+                    <button 
+                      type="button" 
+                      className="text-xs text-primary bg-transparent border-0 cursor-pointer p-0"
+                      onClick={() => setForgotPassword(true)}
+                    >
+                      Forgot password?
+                    </button>
+                  </div>
+                  <input id="login-password" className="input mt-1" type="password" placeholder="••••••••"
+                    value={password} onChange={e => setPass(e.target.value)} required autoComplete="current-password" />
+                </div>
+                {error && <p className="error-message">{error}</p>}
+                <button id="login-submit" className="btn btn-primary w-full"
+                  type="submit" disabled={loading} style={{ marginTop: '0.5rem' }}>
+                  {loading ? 'Signing in…' : 'Sign In'}
+                </button>
+              </form>
+              <p className="text-muted text-center" style={{ marginTop: '1.5rem' }}>
+                Don't have an account? <Link to="/register">Create one</Link>
+              </p>
+            </>
+          )}
         </div>
       </div>
     </div>
