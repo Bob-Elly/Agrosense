@@ -61,7 +61,7 @@ function Analytics() {
       const res = await api.get(`/api/suggestions/${deviceId}${force ? '?force=true' : ''}`)
       setSuggestion(res.data)
     } catch (err) {
-      setAiError(err.response?.data?.error || 'Failed to generate suggestions.')
+      setAiError("Couldn't generate suggestions right now. Please try again.")
     } finally { setAiLoading(false) }
   }
 

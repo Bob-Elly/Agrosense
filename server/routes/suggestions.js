@@ -115,7 +115,18 @@ Guidelines:
 - Do NOT use markdown formatting like asterisks or bold text. Use plain text only.`
 
     // ── 4. Call the Gemini API ────────────────────────────────────────────────
-    const result         = await model.generateContent(prompt)
+    let result;
+    try {
+      result = await model.generateContent(prompt)
+    } catch (apiErr) {
+      if (apiErr.status === 503 || apiErr.message?.includes('503')) {
+        console.warn('[Gemini 503] Retrying after 2 seconds...')
+        await new Promise(resolve => setTimeout(resolve, 2000))
+        result = await model.generateContent(prompt)
+      } else {
+        throw apiErr
+      }
+    }
     let recommendation   = result.response.text()
 
     // Strip any remaining markdown asterisks just in case
