@@ -13,10 +13,45 @@ const transporter = nodemailer.createTransport({
 /**
  * Sends an email natively if running locally, or proxies it through Vercel 
  * if running on Render Free Tier (which blocks outbound SMTP ports 465/587).
+ * 
+ * NEW: Supports Brevo (Sendinblue) HTTP API for ultra-reliable delivery without SMTP!
  */
 export async function dispatchEmail(to, subject, text) {
+  // ── BREVO HTTP API (Recommended) ───────────────────────────────────────────
+  if (process.env.BREVO_API_KEY) {
+    const senderEmail = process.env.EMAIL_USER || 'noreply@agrosense.com'
+    try {
+      const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'api-key': process.env.BREVO_API_KEY
+        },
+        body: JSON.stringify({
+          sender: { name: 'AgroSense', email: senderEmail },
+          to: [{ email: to }],
+          subject: subject,
+          textContent: text
+        })
+      })
+      
+      const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data.message || 'Brevo API Error')
+      }
+      
+      console.log(`✅ Email sent successfully via Brevo HTTP API to ${to}. Message ID: ${data.messageId}`)
+      return true
+    } catch (err) {
+      console.error('Failed to send email via Brevo:', err)
+      return false
+    }
+  }
+
+  // ── FALLBACK: GMAIL SMTP ───────────────────────────────────────────────────
   if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-    console.warn('\n⚠️  EMAIL_USER or EMAIL_PASS not set in .env! Skipping real email dispatch.')
+    console.warn('\n⚠️  EMAIL_USER, EMAIL_PASS, or BREVO_API_KEY not set in .env! Skipping real email dispatch.')
     console.warn(`📩  DEV MODE EMAIL TO [${to}]: ${subject}\n`)
     return false
   }
