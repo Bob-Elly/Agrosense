@@ -21,8 +21,8 @@ export async function dispatchEmail(to, subject, text) {
     return false
   }
 
-  // Detect if we are running in production (Render)
-  const isProd = process.env.NODE_ENV === 'production'
+  // Detect if we are running in production (Render sets RENDER=true by default)
+  const isProd = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true'
   
   if (isProd) {
     // Ensure we don't accidentally try to hit localhost from the Render container
