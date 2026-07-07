@@ -384,9 +384,6 @@ function NodeDetail() {
         <SensorCard icon="🌡️" label="Temperature"
           value={reading?.temperature != null ? reading.temperature.toFixed(1) : null}
           unit="°C" color="var(--color-warning)" />
-        <SensorCard icon="🌫️" label="Humidity"
-          value={reading?.humidity != null ? reading.humidity.toFixed(1) : null}
-          unit="%" color="var(--color-accent)" />
         <SensorCard icon="🧪" label="Soil pH"
           value={reading?.ph != null ? reading.ph.toFixed(1) : null}
           color="var(--color-primary)" alert={phAlert} />
@@ -398,7 +395,7 @@ function NodeDetail() {
           unit=" mg/kg" color="var(--color-warning)" />
         <SensorCard icon="⚡" label="Potassium (K)"
           value={reading?.potassium != null ? Math.round(reading.potassium) : null}
-          unit=" mg/kg" color="var(--color-accent)" span />
+          unit=" mg/kg" color="var(--color-accent)" />
       </div>
 
       {/* ── Battery ── */}

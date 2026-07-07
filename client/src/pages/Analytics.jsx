@@ -285,7 +285,7 @@ function Analytics() {
             <div className="table-scroll">
               <table>
                 <thead><tr>
-                  <th>Time</th><th>Moist%</th><th>Temp°C</th><th>Hum%</th>
+                  <th>Time</th><th>Moist%</th><th>Temp°C</th>
                   <th>N</th><th>P</th><th>K</th><th>pH</th>
                 </tr></thead>
                 <tbody>
@@ -294,7 +294,6 @@ function Analytics() {
                       <td style={{ whiteSpace: 'nowrap', color: 'var(--color-text-muted)' }}>{fmtT(r.timestamp)}</td>
                       <td style={{ color: 'var(--color-accent)',   fontWeight: 600 }}>{v(r.moisture)}</td>
                       <td style={{ color: 'var(--color-warning)' }}>{v(r.temperature)}</td>
-                      <td>{v(r.humidity)}</td>
                       <td style={{ color: 'var(--color-primary)' }}>{v(r.nitrogen, 0)}</td>
                       <td style={{ color: 'var(--color-warning)' }}>{v(r.phosphorus, 0)}</td>
                       <td style={{ color: 'var(--color-accent)'  }}>{v(r.potassium, 0)}</td>

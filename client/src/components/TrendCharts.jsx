@@ -109,7 +109,6 @@ export default function TrendCharts({ readings }) {
     }}>
       <TrendChart data={chartData} dataKey="moisture" name="Soil Moisture" color="var(--color-accent)" unit="%" />
       <TrendChart data={chartData} dataKey="temperature" name="Temperature" color="var(--color-warning)" unit="°C" />
-      <TrendChart data={chartData} dataKey="humidity" name="Humidity" color="var(--color-text-muted)" unit="%" />
       <TrendChart data={chartData} dataKey="ph" name="Soil pH" color="var(--color-primary)" unit="" />
       <TrendChart data={chartData} dataKey="nitrogen" name="Nitrogen (N)" color="var(--color-primary)" unit=" mg" />
       <TrendChart data={chartData} dataKey="phosphorus" name="Phosphorus (P)" color="var(--color-warning)" unit=" mg" />
