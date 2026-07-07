@@ -78,6 +78,9 @@ export async function processTelemetryAlerts(deviceId, reading) {
     }
 
     // 4. Create notifications for each alert (always active)
+    // TEMPORARILY DISABLED: The MCU uploads every 10 seconds, causing massive notification spam.
+    // We should implement cooldowns (e.g., max 1 alert per hour) before re-enabling this.
+    /*
     for (const alert of alerts) {
       const title = `${alert.param} Alert for ${device.label || deviceId}`
       const message = `Current ${alert.param.toLowerCase()} is ${alert.value}, which is ${alert.issue} the optimal range of ${alert.bounds.min} - ${alert.bounds.max}.`
@@ -92,6 +95,7 @@ export async function processTelemetryAlerts(deviceId, reading) {
         await sendEmailNotification(userEmail, title, emailText)
       }
     }
+    */
 
     // Check if node came back online
     // If the device's last status was offline, and now we got telemetry, it's back online!
