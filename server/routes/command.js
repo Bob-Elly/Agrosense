@@ -27,9 +27,11 @@ router.post('/', async (req, res, next) => {
     const { deviceId, commandId, action, payload = {} } = req.body
 
     if (!deviceId || !action) {
+      console.error('[Command 400 Error] Missing deviceId or action. Request body:', req.body);
       return res.status(400).json({ error: 'deviceId and action are required.' })
     }
     if (!VALID_ACTIONS.includes(action)) {
+      console.error(`[Command 400 Error] Invalid action "${action}". Request body:`, req.body);
       return res.status(400).json({
         error: `Invalid action. Allowed: ${VALID_ACTIONS.join(', ')}`,
       })
@@ -53,7 +55,7 @@ router.post('/', async (req, res, next) => {
 
     const now = Date.now()
     const lastSeen = device.updatedAt ? device.updatedAt.toDate().getTime() : 0
-    const isOffline = (now - lastSeen) > 5 * 60 * 1000
+    const isOffline = (now - lastSeen) > 3 * 60 * 1000
 
     let useSmsFallback = false
     if (isOffline) {
@@ -140,6 +142,7 @@ router.post('/ack', async (req, res, next) => {
     const { deviceId, commandId, success = true } = req.body
 
     if (!deviceId || !commandId) {
+      console.error('[Command ACK 400 Error] Missing deviceId or commandId. Request body:', req.body);
       return res.status(400).json({ error: 'deviceId and commandId are required.' })
     }
 

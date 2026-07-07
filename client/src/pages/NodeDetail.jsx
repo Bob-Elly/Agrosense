@@ -59,7 +59,7 @@ function batteryColor(pct) {
 function isOnline(device) {
   if (!device?.updatedAt) return false
   const last = toDate(device.updatedAt)
-  return last && (Date.now() - last.getTime()) < 30 * 60 * 1000
+  return last && (Date.now() - last.getTime()) < 3 * 60 * 1000
 }
 
 // ── Signal Bars ───────────────────────────────────────────────────────────────

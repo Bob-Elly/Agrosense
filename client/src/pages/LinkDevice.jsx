@@ -41,7 +41,7 @@ const CROPS = [
 function isOnline(device) {
   if (!device?.updatedAt) return false
   const last = device.updatedAt.toDate?.() ?? new Date(device.updatedAt)
-  return (Date.now() - last.getTime()) < 30 * 60 * 1000
+  return (Date.now() - last.getTime()) < 3 * 60 * 1000
 }
 
 // ── Small action button ───────────────────────────────────────────────────────
