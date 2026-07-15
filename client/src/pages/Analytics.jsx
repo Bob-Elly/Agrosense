@@ -58,7 +58,8 @@ function Analytics() {
     setAiLoading(true); setAiError(''); 
     if (force) setSuggestion(null)
     try {
-      const res = await api.get(`/api/suggestions/${deviceId}${force ? '?force=true' : ''}`)
+      const qs = force ? `?force=true&t=${Date.now()}` : `?t=${Date.now()}`
+      const res = await api.get(`/api/suggestions/${deviceId}${qs}`)
       setSuggestion(res.data)
     } catch (err) {
       setAiError("Couldn't generate suggestions right now. Please try again.")
@@ -145,7 +146,7 @@ function Analytics() {
           </div>
         </summary>
         <div className="accordion-content">
-          {!suggestion && !aiLoading && (
+          {!suggestion && !aiLoading && !aiError && (
             <>
               <p className="text-sm text-muted" style={{ marginBottom: 'var(--space-4)' }}>
                 Get personalised, Gemini-powered advice based on your latest sensor readings
