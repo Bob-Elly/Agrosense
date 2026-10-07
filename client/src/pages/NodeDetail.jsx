@@ -335,10 +335,8 @@ function NodeDetail() {
   const reading = device.lastReading
   const online  = isOnline(device)
   const pct     = batteryPct(reading?.batteryMv)
-  const moistureAlert = reading?.moisture != null
-    ? reading.moisture < 25 ? 'Critically dry!' : reading.moisture > 85 ? 'Waterlogged!' : null : null
-  const phAlert = reading?.ph != null
-    ? (reading.ph < 5.0 || reading.ph > 8.0) ? 'Critical range!' : null : null
+  const moistureAlert = null
+  const phAlert = null
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (

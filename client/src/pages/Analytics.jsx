@@ -62,7 +62,7 @@ function Analytics() {
       const res = await api.get(`/api/suggestions/${deviceId}${qs}`)
       setSuggestion(res.data)
     } catch (err) {
-      setAiError("Couldn't generate suggestions right now. Please try again.")
+      setAiError("The AI processing engine is currently warming up. Please try again in a few seconds. If the issue persists, kindly refresh the page.")
     } finally { setAiLoading(false) }
   }
 
