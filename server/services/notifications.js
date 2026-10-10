@@ -77,11 +77,20 @@ export async function processTelemetryAlerts(deviceId, reading) {
       // We will map it to a general alert if needed, or skip it.
     }
 
-    // 4. Create notifications for each alert (always active)
-    // TEMPORARILY DISABLED: The MCU uploads every 10 seconds, causing massive notification spam.
-    // We should implement cooldowns (e.g., max 1 alert per hour) before re-enabling this.
-    /*
+    // 4. Create notifications for each alert (with a 4-hour cooldown per parameter)
     for (const alert of alerts) {
+      // Cooldown check (prevent spam when polling every 60s during irrigation)
+      const alertId = `${deviceId}_${alert.param}`
+      const cdRef = db.collection('alertCooldowns').doc(alertId)
+      const cdSnap = await cdRef.get()
+      if (cdSnap.exists) {
+        const lastSent = cdSnap.data().timestamp?.toDate()?.getTime() || 0
+        const hoursSince = (Date.now() - lastSent) / (1000 * 60 * 60)
+        if (hoursSince < 4) continue; // Skip if sent in the last 4 hours
+      }
+
+      await cdRef.set({ timestamp: new Date() })
+
       const title = `${alert.param} Alert for ${device.label || deviceId}`
       const message = `Current ${alert.param.toLowerCase()} is ${alert.value}, which is ${alert.issue} the optimal range of ${alert.bounds.min} - ${alert.bounds.max}.`
 
@@ -95,7 +104,6 @@ export async function processTelemetryAlerts(deviceId, reading) {
         await sendEmailNotification(userEmail, title, emailText)
       }
     }
-    */
 
     // Check if node came back online
     // If the device's last status was offline, and now we got telemetry, it's back online!
