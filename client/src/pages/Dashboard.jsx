@@ -17,7 +17,7 @@ function isOnline(device) {
 }
 function batteryPct(mv) {
   if (mv == null) return null
-  return Math.min(100, Math.max(0, Math.round((mv - 3000) / 1200 * 100)))
+  return Math.min(100, Math.max(0, Math.round(((mv - 9000) / 3000) * 100)))
 }
 function average(arr) {
   const valid = arr.filter(v => v != null && !isNaN(v))

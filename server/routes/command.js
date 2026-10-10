@@ -126,6 +126,40 @@ router.post('/', async (req, res, next) => {
   }
 })
 
+// ── GET /api/command ──────────────────────────────────────────────────────────
+// Polled by ESP32 over Wi-Fi. Returns pending commands as a plain string.
+// Maps 'read' -> "poll" and 'irrigate' -> "pump_on". Auto-ACKs the commands.
+router.get('/', async (req, res, next) => {
+  try {
+    const { deviceId } = req.query
+    if (!deviceId) return res.status(400).send('')
+
+    const q = queueRef(deviceId).where('status', '==', 'pending')
+    const snap = await q.get()
+    if (snap.empty) return res.send('')
+
+    let responseStr = ''
+    const batch = db.batch()
+
+    snap.docs.forEach(d => {
+      const { action } = d.data()
+      if (action === 'read') responseStr += 'poll '
+      if (action === 'irrigate') responseStr += 'pump_on '
+      
+      batch.update(d.ref, {
+        status: 'acknowledged',
+        acknowledgedAt: new Date(),
+        updatedAt: new Date()
+      })
+    })
+
+    await batch.commit()
+    return res.send(responseStr.trim())
+  } catch (err) {
+    next(err)
+  }
+})
+
 // ── POST /api/command/ack ─────────────────────────────────────────────────────
 // Called by the ESP32 firmware over GSM after it has executed (or failed) a
 // command. Updates the Firestore command document status, which the client's

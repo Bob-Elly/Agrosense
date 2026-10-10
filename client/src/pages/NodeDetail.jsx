@@ -48,7 +48,8 @@ function toDate(ts) {
 }
 function batteryPct(mv) {
   if (mv == null) return null
-  return Math.min(100, Math.max(0, Math.round((mv - 3000) / 1200 * 100)))
+  // Map 12V Lead-Acid/Li-ion pack: 9.0V (9000mV) to 12.0V (12000mV)
+  return Math.min(100, Math.max(0, Math.round(((mv - 9000) / 3000) * 100)))
 }
 function batteryColor(pct) {
   if (pct == null) return 'var(--color-text-dim)'
