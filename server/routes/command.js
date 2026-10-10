@@ -145,6 +145,7 @@ router.get('/', async (req, res, next) => {
       const { action } = d.data()
       if (action === 'read') responseStr += 'poll '
       if (action === 'irrigate') responseStr += 'pump_on '
+      if (action === 'stop') responseStr += 'pump_off '
       
       batch.update(d.ref, {
         status: 'acknowledged',

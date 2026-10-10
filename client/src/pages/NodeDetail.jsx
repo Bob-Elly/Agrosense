@@ -244,7 +244,7 @@ function NodeDetail() {
   // ═══════════════════════════════════════════════════════════════════════════
   // IRRIGATION CONTROL
   // ═══════════════════════════════════════════════════════════════════════════
-  async function handleIrrigate(seconds) {
+  async function handleIrrigate() {
     if (irrigState === 'pending') return
     cancelIrrigTracking()
     setIrrigMsg(null)
@@ -253,7 +253,7 @@ function NodeDetail() {
 
     if (!online) {
       setIrrigMsg({ text: '📵 Node is offline — command queued for SMS delivery', type: 'warning' })
-      try { await api.post('/api/command', { deviceId, action: 'irrigate', payload: { durationSeconds: seconds } }) } catch {}
+      try { await api.post('/api/command', { deviceId, action: 'irrigate' }) } catch {}
       return
     }
 
@@ -264,7 +264,7 @@ function NodeDetail() {
 
     try {
       await setDoc(cmdDocRef, {
-        deviceId, action: 'irrigate', payload: { durationSeconds: seconds },
+        deviceId, action: 'irrigate',
         status: 'pending', createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
       })
     } catch {
@@ -273,11 +273,10 @@ function NodeDetail() {
     }
 
     setIrrigState('pending')
-    setIrrigSecs(seconds)
-    setIrrigMsg({ text: `💧 Irrigation (${seconds}s) sent — waiting for device acknowledgement…`, type: 'info' })
+    setIrrigMsg({ text: `💧 Smart irrigation sent — waiting for device acknowledgement…`, type: 'info' })
 
     try {
-      await api.post('/api/command', { deviceId, commandId, action: 'irrigate', payload: { durationSeconds: seconds } })
+      await api.post('/api/command', { deviceId, commandId, action: 'irrigate' })
     } catch { /* device may poll Firestore directly */ }
 
     const unsub = onSnapshot(cmdDocRef, snap => {
@@ -285,12 +284,12 @@ function NodeDetail() {
       const { status } = snap.data()
       if (status === 'acknowledged') {
         cancelIrrigTracking()
-        setIrrigState('idle'); setIrrigSecs(null)
-        setIrrigMsg({ text: `✓ Irrigation started — running for ${seconds}s`, type: 'success' })
+        setIrrigState('idle')
+        setIrrigMsg({ text: `✓ Smart Irrigation started — stopping automatically at optimal moisture`, type: 'success' })
         setTimeout(() => setIrrigMsg(null), 8000)
       } else if (status === 'failed') {
         cancelIrrigTracking()
-        setIrrigState('idle'); setIrrigSecs(null)
+        setIrrigState('idle')
         setIrrigMsg({ text: '❌ Device reported command failure.', type: 'error' })
       }
     })
@@ -449,27 +448,21 @@ function NodeDetail() {
       <div className="card-sm" style={{ marginBottom: 'var(--space-4)' }}>
         <p className="text-sm text-muted" style={{ marginBottom: 'var(--space-3)' }}>
           {irrigState === 'pending'
-            ? `⏳ Waiting for device to acknowledge the ${irrigSecs}s command…`
+            ? `⏳ Waiting for device to acknowledge the command…`
             : online
-              ? 'Start irrigation for a set duration, or stop the pump immediately.'
+              ? 'Trigger a smart irrigation cycle. The node will stop automatically.'
               : '📵 Device offline — commands will be queued via SMS fallback.'}
         </p>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--space-2)' }}>
-          {[30, 60, 120].map(s => {
-            const isThisPending = irrigState === 'pending' && irrigSecs === s
-            return (
-              <button key={s} id={`irrigate-${s}s`}
-                className={`btn btn-sm ${isThisPending ? 'btn-irrig-pending' : 'btn-primary'}`}
-                onClick={() => handleIrrigate(s)}
-                disabled={irrigState === 'pending'}
-                title={isThisPending ? 'Awaiting acknowledgement…' : `Irrigate for ${s}s`}
-              >
-                {isThisPending ? '⏳ …' : `${s}s`}
-              </button>
-            )
-          })}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 'var(--space-2)' }}>
+          <button id="irrigate-smart"
+            className={`btn btn-sm ${irrigState === 'pending' ? 'btn-irrig-pending' : 'btn-primary'}`}
+            onClick={() => handleIrrigate()}
+            disabled={irrigState === 'pending'}
+          >
+            {irrigState === 'pending' ? '⏳ …' : '💧 Start Smart Irrigation'}
+          </button>
           <button id="stop-irrigation-btn" className="btn btn-danger btn-sm" onClick={handleStop}>
-            Stop
+            Stop Pump
           </button>
         </div>
         <IrrigMessage msg={irrigMsg} />
