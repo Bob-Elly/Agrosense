@@ -57,15 +57,6 @@ router.post('/', async (req, res, next) => {
     const lastSeen = device.updatedAt ? device.updatedAt.toDate().getTime() : 0
     const isOffline = (now - lastSeen) > 3 * 60 * 1000
 
-    let useSmsFallback = false
-    if (isOffline) {
-      if (!device.simNumber) {
-        return res.status(400).json({ error: 'Device offline and no SIM number configured for SMS fallback' })
-      }
-      useSmsFallback = true
-      command.status = 'sms_fallback'
-    }
-
     let docId
     if (commandId) {
       // Client pre-created the doc — update it so the server's timestamp is set
@@ -77,8 +68,8 @@ router.post('/', async (req, res, next) => {
       docId = docRef.id
     }
 
-    // ── Trigger SMS Fallback if needed ───────────────────────────────────────
-    if (useSmsFallback) {
+    // ── Optional SMS notification if device is offline and has SIM number ────
+    if (isOffline && device.simNumber) {
       let smsMessage = ''
       if (action === 'irrigate') {
         smsMessage = `CMD:IRRIGATE:${payload.duration || 30}`
@@ -94,23 +85,9 @@ router.post('/', async (req, res, next) => {
           message: smsMessage,
           enque: true
         })
-
-        // Notify
         createCommandNotification(deviceId, action, 'sms_fallback').catch(console.error)
-
-        return res.status(201).json({
-          message: `Command "${action}" queued for ${deviceId}. Device offline, SMS sent.`,
-          commandId: docId,
-          status: 'sms_fallback'
-        })
       } catch (smsError) {
         console.error('[SMS Error]', smsError)
-        await queueRef(deviceId).doc(docId).update({
-          status: 'failed',
-          error: 'SMS fallback failed',
-          updatedAt: new Date()
-        })
-        return res.status(500).json({ error: 'Failed to send SMS fallback' })
       }
     }
 
@@ -127,16 +104,30 @@ router.post('/', async (req, res, next) => {
 })
 
 // ── GET /api/command ──────────────────────────────────────────────────────────
-// Polled by ESP32 over Wi-Fi. Returns pending commands as a plain string.
+// Polled by ESP32 over Wi-Fi every 10 seconds.
+// Acts as a live heartbeat and returns pending commands as a plain string.
 // Maps 'read' -> "poll" and 'irrigate' -> "pump_on". Auto-ACKs the commands.
 router.get('/', async (req, res, next) => {
   try {
     const { deviceId } = req.query
-    if (!deviceId) return res.status(400).send('')
+    if (!deviceId) return res.status(400).type('text/plain').send('')
+
+    // ── Active Heartbeat ───────────────────────────────────────────────────────
+    // ESP32 is polling over Wi-Fi right now. Refresh device online status in Firestore.
+    await db.collection('devices').doc(deviceId).set(
+      {
+        deviceId,
+        status:    'online',
+        updatedAt: new Date(),
+      },
+      { merge: true }
+    )
 
     const q = queueRef(deviceId).where('status', '==', 'pending')
     const snap = await q.get()
-    if (snap.empty) return res.send('')
+    if (snap.empty) {
+      return res.type('text/plain').send('')
+    }
 
     let responseStr = ''
     const batch = db.batch()
@@ -155,7 +146,7 @@ router.get('/', async (req, res, next) => {
     })
 
     await batch.commit()
-    return res.send(`CMD: ${responseStr.trim()}`)
+    return res.type('text/plain').send(`CMD: ${responseStr.trim()}`)
   } catch (err) {
     next(err)
   }

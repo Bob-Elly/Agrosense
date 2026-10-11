@@ -170,10 +170,11 @@ function NodeDetail() {
         setLoading(false)
 
         // ── Reading detection ──────────────────────────────────────────────
-        // If a read request is pending, check whether the incoming updatedAt
-        // is strictly AFTER the baseline we captured at button-press time.
-        if (readPendingRef.current && data?.updatedAt) {
-          const newTime  = toDate(data.updatedAt)
+        // If a read request is pending, check whether the incoming reading's
+        // timestamp is strictly AFTER the baseline reading timestamp we captured.
+        const readingTs = data?.lastReading?.receivedAt || data?.lastReading?.timestamp
+        if (readPendingRef.current && readingTs) {
+          const newTime  = toDate(readingTs)
           const baseTime = readBaseTimeRef.current
 
           if (newTime && baseTime && newTime > baseTime) {
@@ -214,39 +215,29 @@ function NodeDetail() {
     if (readState === 'pending') return
     setReadMsg(null)
 
-    const online = isOnline(device)
-
-    // ── OFFLINE PATH ──────────────────────────────────────────────────────
-    if (!online) {
-      setReadMsg({ text: '📵 Node is offline — request queued for SMS delivery', type: 'warning' })
-      setTimeout(() => setReadMsg(null), 8000)
-      // Still fire the API call so the SMS fallback can queue it
-      try { await api.post('/api/command', { deviceId, action: 'read' }) } catch {}
-      return
-    }
-
-    // ── ONLINE PATH ──────────────────────────────────────────────────────
-    // Capture the current updatedAt as baseline BEFORE changing any state.
-    // We convert to a plain JS Date so it survives React re-renders without
-    // being affected by Firestore Timestamp reference changes.
-    const rawTs = device?.updatedAt
+    // Capture the current lastReading timestamp as baseline BEFORE changing state
+    const rawTs = device?.lastReading?.receivedAt || device?.lastReading?.timestamp
     readBaseTimeRef.current = rawTs ? toDate(rawTs) : new Date(0)
     readPendingRef.current  = true
     setReadState('pending')
+    setReadMsg({ text: '📡 Requesting fresh reading from node…', type: 'info' })
 
-    // Send the read command (best-effort — don't block the pending state)
+    // Send the read command to the queue
     try {
       await api.post('/api/command', { deviceId, action: 'read' })
     } catch {
+      readPendingRef.current = false
+      setReadState('idle')
       setReadMsg({ text: '❌ Failed to queue command. Check connection.', type: 'error' })
       setTimeout(() => setReadMsg(null), 8000)
+      return
     }
 
     // 5-minute timeout — if no new reading arrives, give up and inform user
     readTimerRef.current = setTimeout(() => {
       readPendingRef.current = false
       setReadState('idle')
-      setReadMsg({ text: '⚠ Device unreachable — request may be delivered via SMS fallback', type: 'warning' })
+      setReadMsg({ text: '⚠ Device did not respond with fresh readings in time.', type: 'warning' })
       setTimeout(() => setReadMsg(null), 8000)
       readTimerRef.current = null
     }, READ_TIMEOUT_MS)
@@ -259,14 +250,6 @@ function NodeDetail() {
     if (irrigState === 'pending') return
     cancelIrrigTracking()
     setIrrigMsg(null)
-
-    const online = isOnline(device)
-
-    if (!online) {
-      setIrrigMsg({ text: '📵 Node is offline — command queued for SMS delivery', type: 'warning' })
-      try { await api.post('/api/command', { deviceId, action: 'irrigate' }) } catch {}
-      return
-    }
 
     // Write command doc to Firestore first (so listener is set before server response)
     const cmdDocRef = doc(collection(db, 'commands', deviceId, 'queue'))
@@ -310,7 +293,7 @@ function NodeDetail() {
       cancelIrrigTracking()
       try { await updateDoc(cmdDocRef, { status: 'timeout', updatedAt: new Date() }) } catch {}
       setIrrigState('idle'); setIrrigSecs(null)
-      setIrrigMsg({ text: '⚠ Device unreachable — command may be delivered via SMS fallback', type: 'warning' })
+      setIrrigMsg({ text: '⚠ Device did not acknowledge irrigation command in time.', type: 'warning' })
     }, COMMAND_TIMEOUT_MS)
   }
 
