@@ -155,7 +155,7 @@ router.get('/', async (req, res, next) => {
     })
 
     await batch.commit()
-    return res.send(responseStr.trim())
+    return res.send(`CMD: ${responseStr.trim()}`)
   } catch (err) {
     next(err)
   }
