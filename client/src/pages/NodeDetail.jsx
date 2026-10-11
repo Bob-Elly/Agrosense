@@ -107,8 +107,8 @@ function SensorCard({ icon, label, value, unit, color, alert, span }) {
   )
 }
 
-// ── Irrigation Message Banner ─────────────────────────────────────────────────
-function IrrigMessage({ msg }) {
+// ── Inline Status Message Banner ─────────────────────────────────────────────
+function StatusMessage({ msg }) {
   if (!msg) return null
   const palette = {
     success: { bg: 'var(--color-primary-muted)',  border: 'rgba(0,230,118,0.3)',   color: 'var(--color-primary)' },
@@ -128,6 +128,7 @@ function IrrigMessage({ msg }) {
     </div>
   )
 }
+const IrrigMessage = StatusMessage
 
 // ═════════════════════════════════════════════════════════════════════════════
 // Main Component
@@ -145,6 +146,7 @@ function NodeDetail() {
   // ── Reading request state ──────────────────────────────────────────────────
   // 'idle' | 'pending'
   const [readState, setReadState]     = useState('idle')
+  const [readMsg,   setReadMsg]       = useState(null)    // { text, type } | null
   const readPendingRef  = useRef(false)   // mirrors readState for use inside closures
   const readBaseTimeRef = useRef(null)    // updatedAt captured at button-press
   const readTimerRef    = useRef(null)    // 5-min timeout handle
@@ -180,7 +182,8 @@ function NodeDetail() {
             readTimerRef.current   = null
             readPendingRef.current = false
             setReadState('idle')
-            setToast({ message: '✓ Fresh readings received', type: 'success' })
+            setReadMsg({ text: '✓ Fresh readings received', type: 'success' })
+            setTimeout(() => setReadMsg(null), 8000)
           }
         }
       },
@@ -209,12 +212,14 @@ function NodeDetail() {
   // ═══════════════════════════════════════════════════════════════════════════
   async function handleReadRequest() {
     if (readState === 'pending') return
+    setReadMsg(null)
 
     const online = isOnline(device)
 
     // ── OFFLINE PATH ──────────────────────────────────────────────────────
     if (!online) {
-      setToast({ message: '📵 Node offline — request queued for SMS delivery', type: 'warning' })
+      setReadMsg({ text: '📵 Node is offline — request queued for SMS delivery', type: 'warning' })
+      setTimeout(() => setReadMsg(null), 8000)
       // Still fire the API call so the SMS fallback can queue it
       try { await api.post('/api/command', { deviceId, action: 'read' }) } catch {}
       return
@@ -230,13 +235,19 @@ function NodeDetail() {
     setReadState('pending')
 
     // Send the read command (best-effort — don't block the pending state)
-    try { await api.post('/api/command', { deviceId, action: 'read' }) } catch {}
+    try {
+      await api.post('/api/command', { deviceId, action: 'read' })
+    } catch {
+      setReadMsg({ text: '❌ Failed to queue command. Check connection.', type: 'error' })
+      setTimeout(() => setReadMsg(null), 8000)
+    }
 
     // 5-minute timeout — if no new reading arrives, give up and inform user
     readTimerRef.current = setTimeout(() => {
       readPendingRef.current = false
       setReadState('idle')
-      setToast({ message: '⏱ No response from device', type: 'warning' })
+      setReadMsg({ text: '⚠ Device unreachable — request may be delivered via SMS fallback', type: 'warning' })
+      setTimeout(() => setReadMsg(null), 8000)
       readTimerRef.current = null
     }, READ_TIMEOUT_MS)
   }
@@ -418,7 +429,7 @@ function NodeDetail() {
       <button
         id="request-reading-btn"
         className="btn btn-ghost w-full"
-        style={{ marginBottom: 'var(--space-4)' }}
+        style={{ marginBottom: readMsg || readState === 'pending' ? 'var(--space-2)' : 'var(--space-4)' }}
         onClick={handleReadRequest}
         disabled={readState === 'pending'}
         title={readState === 'pending' ? 'Waiting for fresh readings…' : 'Ask the node to send an immediate reading'}
@@ -434,9 +445,16 @@ function NodeDetail() {
         }
       </button>
 
+      {/* Inline Reading Message Banner */}
+      {readMsg && (
+        <div style={{ marginBottom: 'var(--space-4)' }}>
+          <StatusMessage msg={readMsg} />
+        </div>
+      )}
+
       {/* Pending hint text */}
       {readState === 'pending' && (
-        <p className="text-xs text-dim" style={{ marginTop: '-var(--space-3)', marginBottom: 'var(--space-4)', textAlign: 'center' }}>
+        <p className="text-xs text-dim" style={{ marginTop: 'var(--space-2)', marginBottom: 'var(--space-4)', textAlign: 'center' }}>
           Waiting for device to send fresh data. Will time out in 5 minutes.
         </p>
       )}
