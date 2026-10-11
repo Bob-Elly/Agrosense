@@ -68,13 +68,16 @@ export async function processTelemetryAlerts(deviceId, reading) {
     }
 
     if (cropProfile) {
+      const inst = cropProfile.instantaneous
+      const nBounds = inst?.n || inst?.nitrogen || cropProfile.nitrogen
+      const pBounds = inst?.p || inst?.phosphorus || cropProfile.phosphorus
+      const kBounds = inst?.k || inst?.potassium || cropProfile.potassium
+
       checkBound('Moisture', reading.moisture, cropProfile.moisture, 'lowMoisture')
       checkBound('pH', reading.ph, cropProfile.ph, 'phAlert')
-      checkBound('Nitrogen', reading.nitrogen, cropProfile.nitrogen, 'lowNutrient')
-      checkBound('Phosphorus', reading.phosphorus, cropProfile.phosphorus, 'lowNutrient')
-      checkBound('Potassium', reading.potassium, cropProfile.potassium, 'lowNutrient')
-      // Note: temperature bounds can also be checked, but the prompt didn't explicitly request a toggle for it.
-      // We will map it to a general alert if needed, or skip it.
+      checkBound('Nitrogen', reading.nitrogen, nBounds, 'lowNutrient')
+      checkBound('Phosphorus', reading.phosphorus, pBounds, 'lowNutrient')
+      checkBound('Potassium', reading.potassium, kBounds, 'lowNutrient')
     }
 
     // 4. Create notifications for each alert (with a 4-hour cooldown per parameter)

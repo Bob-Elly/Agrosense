@@ -11,6 +11,7 @@
 import { Router }               from 'express'
 import { GoogleGenerativeAI }   from '@google/generative-ai'
 import { db }                   from '../config/firebaseAdmin.js'
+import { CROPS, getCropProfile } from '../data/crops.js'
 
 const router = Router()
 
@@ -74,6 +75,9 @@ router.get('/:deviceId', async (req, res, next) => {
       if (profileSnap.exists) {
         profile = profileSnap.data()
       }
+      if (!profile) {
+        profile = getCropProfile(crop)
+      }
     }
 
     // ── 3. Build the prompt ───────────────────────────────────────────────────
@@ -82,12 +86,32 @@ router.get('/:deviceId', async (req, res, next) => {
     const range = (field) =>
       profile?.[field] ? `${profile[field].min}–${profile[field].max}` : 'no data'
 
+    // Resolve N-P-K using instantaneous thresholds by default for active in-situ sensor detection
+    const getNutrientBounds = (field) => {
+      const shortKey = field === 'nitrogen' ? 'n' : field === 'phosphorus' ? 'p' : field === 'potassium' ? 'k' : field
+      const inst = profile?.instantaneous
+      if (inst) {
+        if (inst[shortKey]) return inst[shortKey]
+        if (inst[field]) return inst[field]
+      }
+      const fallbackCrop = getCropProfile(crop)
+      if (fallbackCrop?.instantaneous?.[shortKey]) {
+        return fallbackCrop.instantaneous[shortKey]
+      }
+      return profile?.[field] || null
+    }
+
+    const nutrientRange = (field) => {
+      const bounds = getNutrientBounds(field)
+      return bounds ? `${bounds.min}–${bounds.max}` : 'no data'
+    }
+
     const prompt = `You are an expert agricultural advisor helping small-scale farmers in West Africa improve their crop yields.
 
 DEVICE: ${label}
 CROP: ${crop}
 
-CURRENT SOIL SENSOR READINGS:
+CURRENT SOIL SENSOR READINGS (RS485 7-IN-1 IN-SITU PROBE):
 - Soil Moisture:  ${fmt(reading.moisture, '%')}
 - Temperature:    ${fmt(reading.temperature, '°C')}
 - Humidity:       ${fmt(reading.humidity, '%')}
@@ -96,12 +120,17 @@ CURRENT SOIL SENSOR READINGS:
 - Potassium (K):  ${fmt(reading.potassium, ' mg/kg')}
 - Soil pH:        ${fmt(reading.ph)}
 
-OPTIMAL RANGES FOR ${crop.toUpperCase()}:
+OPTIMAL RANGES FOR ${crop.toUpperCase()} (RS485 IN-SITU INSTANTANEOUS SENSOR THRESHOLDS):
 - Soil Moisture:  ${range('moisture')}%
 - pH:             ${range('ph')}
-- Nitrogen (N):   ${range('nitrogen')} mg/kg
-- Phosphorus (P): ${range('phosphorus')} mg/kg
-- Potassium (K):  ${range('potassium')} mg/kg
+- Nitrogen (N):   ${nutrientRange('nitrogen')} mg/kg
+- Phosphorus (P): ${nutrientRange('phosphorus')} mg/kg
+- Potassium (K):  ${nutrientRange('potassium')} mg/kg
+
+IMPORTANT SENSOR CALIBRATION CONTEXT:
+The sensor installed is an RS485 7-in-1 multi-parameter probe measuring instantaneous ionic pore flux in-situ.
+Under ambient soil moisture, instantaneous nutrient availability ranges between 2–24 mg/kg (unlike laboratory chemical extractable reserves which are 20–200 mg/kg).
+Do NOT treat readings in the 2–10 mg/kg range as critically deficient or issue false starvation warnings if they match the instantaneous optimal thresholds above.
 
 Based on the above, please provide:
 1. A brief soil health assessment (2-3 sentences max).

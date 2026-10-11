@@ -5,12 +5,13 @@ import {
 } from 'recharts'
 import { db } from '../firebase.js'
 import ThemeToggle from '../components/ThemeToggle.jsx'
+import { CROPS, getCropProfile } from '../data/crops.js'
 
 // Helper to determine crop category
 function getCropCategory(name) {
   const lower = name.toLowerCase()
   if (/(yam|cassava|potato)/.test(lower)) return 'Tubers & Root Crops'
-  if (/(maize|rice)/.test(lower)) return 'Cereals & Grains'
+  if (/(maize|corn|rice)/.test(lower)) return 'Cereals & Grains'
   if (/(pea|bean|groundnut)/.test(lower)) return 'Legumes'
   return 'General Crops'
 }
@@ -70,24 +71,56 @@ function CropLibrary() {
   const [crops, setCrops] = useState([])
   const [loading, setLoading] = useState(true)
   const [activeCropId, setActiveCropId] = useState(null)
-  const [viewMode, setViewMode] = useState('chart') // 'chart' or 'data'
+  const [viewMode, setViewMode] = useState('instantaneous') // 'instantaneous' (default) or 'seasonal'
+  const [displayFormat, setDisplayFormat] = useState('chart') // 'chart' or 'data'
 
   useEffect(() => {
     const fetchCrops = async () => {
       try {
         const querySnapshot = await getDocs(collection(db, 'cropProfiles'))
-        const fetchedCrops = querySnapshot.docs.map(doc => ({
+        let fetchedCrops = querySnapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data()
         }))
-        // Sort alphabetically
-        fetchedCrops.sort((a, b) => a.name.localeCompare(b.name))
-        setCrops(fetchedCrops)
-        if (fetchedCrops.length > 0) {
-          setActiveCropId(fetchedCrops[0].id)
+
+        // Fallback to static CROPS dataset if Firestore collection is empty
+        if (!fetchedCrops.length) {
+          fetchedCrops = Object.values(CROPS)
+        } else {
+          // Merge static instantaneous/seasonal definitions with Firestore docs
+          fetchedCrops = fetchedCrops.map(c => {
+            const staticDef = getCropProfile(c.id) || getCropProfile(c.name)
+            return {
+              ...staticDef,
+              ...c,
+              instantaneous: c.instantaneous || staticDef?.instantaneous,
+              seasonal: c.seasonal || staticDef?.seasonal,
+            }
+          })
+        }
+
+        // Deduplicate aliases (e.g. cocoa_yam / cocoyam) for clean presentation
+        const seen = new Set()
+        const uniqueCrops = []
+        for (const c of fetchedCrops) {
+          const canonicalName = c.name
+          if (!seen.has(canonicalName)) {
+            seen.add(canonicalName)
+            uniqueCrops.push(c)
+          }
+        }
+
+        uniqueCrops.sort((a, b) => a.name.localeCompare(b.name))
+        setCrops(uniqueCrops)
+        if (uniqueCrops.length > 0) {
+          setActiveCropId(uniqueCrops[0].id)
         }
       } catch (err) {
         console.error('Failed to fetch crop profiles:', err)
+        // Fallback to static dataset if network error
+        const fallback = Object.values(CROPS)
+        setCrops(fallback)
+        if (fallback.length > 0) setActiveCropId(fallback[0].id)
       } finally {
         setLoading(false)
       }
@@ -97,23 +130,41 @@ function CropLibrary() {
 
   const activeCrop = useMemo(() => crops.find(c => c.id === activeCropId) || null, [crops, activeCropId])
 
+  // Helper to resolve nutrient ranges based on active viewMode
+  const getNutrientRange = (crop, key) => {
+    if (!crop) return { min: 0, max: 0 }
+    const shortKey = key === 'nitrogen' ? 'n' : key === 'phosphorus' ? 'p' : key === 'potassium' ? 'k' : key
+    const tier = crop[viewMode] || (viewMode === 'instantaneous' ? crop.instantaneous : crop.seasonal)
+    if (tier && (tier[shortKey] || tier[key])) {
+      return tier[shortKey] || tier[key]
+    }
+    return crop[key] || crop[shortKey] || { min: 0, max: 0 }
+  }
+
   // Prepare normalized data for the Radar Chart
   const radarData = useMemo(() => {
     if (!activeCrop) return []
     
-    // Define max scales for normalization to ensure the chart looks balanced
-    // 100%, 14pH, 200mg N, 100mg P, 200mg K, 50C
-    const scales = {
+    // Define max scales for normalization to ensure the chart looks balanced in both modes
+    const scales = viewMode === 'instantaneous' ? {
       moisture: { scale: 100, unit: '%' },
       ph: { scale: 14, unit: '' },
-      nitrogen: { scale: 200, unit: 'mg' },
-      phosphorus: { scale: 100, unit: 'mg' },
-      potassium: { scale: 200, unit: 'mg' },
+      nitrogen: { scale: 15, unit: 'mg/kg' },
+      phosphorus: { scale: 10, unit: 'mg/kg' },
+      potassium: { scale: 30, unit: 'mg/kg' },
+      temperature: { scale: 50, unit: '°C' },
+    } : {
+      moisture: { scale: 100, unit: '%' },
+      ph: { scale: 14, unit: '' },
+      nitrogen: { scale: 200, unit: 'mg/kg' },
+      phosphorus: { scale: 100, unit: 'mg/kg' },
+      potassium: { scale: 200, unit: 'mg/kg' },
       temperature: { scale: 50, unit: '°C' },
     }
 
     const mkAxis = (subject, key) => {
-      const c = activeCrop[key] || { min: 0, max: 0 }
+      const isNutrient = ['nitrogen', 'phosphorus', 'potassium'].includes(key)
+      const c = isNutrient ? getNutrientRange(activeCrop, key) : (activeCrop[key] || { min: 0, max: 0 })
       const s = scales[key]
       return {
         subject,
@@ -133,7 +184,7 @@ function CropLibrary() {
       mkAxis('pH Level', 'ph'),
       mkAxis('Temp', 'temperature'),
     ]
-  }, [activeCrop])
+  }, [activeCrop, viewMode])
 
   return (
     <div className="page">
@@ -171,33 +222,63 @@ function CropLibrary() {
         }
       `}</style>
 
-      {/* ── Header ── */}
-      <div className="flex items-center justify-between mb-4">
-        <h2>Crop Library</h2>
+      {/* ── Header & Toolbar ── */}
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <div className="flex items-center gap-3">
+          <h2>Crop Library</h2>
+          {/* Toggle between "Instantaneous" (Default) and "Seasonal" */}
+          <button
+            id="toggle-threshold-mode-btn"
+            className="btn btn-ghost btn-sm"
+            onClick={() => setViewMode(prev => prev === 'instantaneous' ? 'seasonal' : 'instantaneous')}
+            title="Toggle between in-situ sensor instantaneous detection and lab seasonal reserve thresholds"
+            style={{
+              padding: '0.35rem 0.85rem',
+              fontSize: 'var(--font-xs)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              border: '1px solid var(--color-border)',
+              borderRadius: '999px',
+              fontWeight: 600,
+              cursor: 'pointer'
+            }}
+          >
+            <span>{viewMode === 'instantaneous' ? '⚡ Instantaneous' : '🌱 Seasonal'}</span>
+          </button>
+        </div>
         <ThemeToggle />
       </div>
 
-      {/* ── General Info Banner ── */}
+      {/* ── Mode Info Banner ── */}
       <div className="card" style={{ 
-        marginBottom: 'var(--space-5)', 
-        background: 'var(--color-primary-muted)', 
-        border: '1px solid rgba(0, 230, 118, 0.25)',
-        padding: '1.25rem'
+        marginBottom: 'var(--space-4)', 
+        background: viewMode === 'instantaneous' ? 'var(--color-primary-muted)' : 'var(--color-surface-alt)', 
+        border: viewMode === 'instantaneous' ? '1px solid rgba(0, 230, 118, 0.25)' : '1px solid var(--color-border)',
+        padding: '0.85rem 1.25rem',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: '0.5rem'
       }}>
-        <h3 style={{ fontSize: '1.1rem', color: 'var(--color-primary)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          💡 Why optimal conditions matter
-        </h3>
-        <ul style={{ 
-          margin: 0, 
-          paddingLeft: '1.5rem', 
-          color: 'var(--color-text)', 
-          fontSize: 'var(--font-sm)',
-          lineHeight: 1.6
-        }}>
-          <li><strong>Reduced fertilizer costs:</strong> Target exactly what the soil needs.</li>
-          <li><strong>Natural pest resistance:</strong> Healthy plants fight off diseases naturally.</li>
-          <li><strong>Eliminated growth stunting:</strong> Consistent conditions ensure steady growth.</li>
-        </ul>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: 'var(--font-sm)' }}>
+          <span>{viewMode === 'instantaneous' ? '⚡' : '🌱'}</span>
+          <span>
+            {viewMode === 'instantaneous' ? (
+              <>
+                <strong>Active Mode: Instantaneous In-Situ Detection</strong> (Calibrated for RS485 7-in-1 probe active ionic pore flux, 2–24 mg/kg)
+              </>
+            ) : (
+              <>
+                <strong>Active Mode: Seasonal Lab Reference</strong> (Traditional soil extractable reserves, 15–200 mg/kg)
+              </>
+            )}
+          </span>
+        </div>
+        <span className="text-xs text-muted">
+          Unit: <strong>mg/kg</strong>
+        </span>
       </div>
 
       {loading ? (
@@ -230,7 +311,12 @@ function CropLibrary() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 'var(--space-2)' }}>
                   <div>
                     <h2 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--color-primary)' }}>{activeCrop.name}</h2>
-                    <span className="badge" style={{ marginTop: '0.5rem' }}>{getCropCategory(activeCrop.name)}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
+                      <span className="badge">{getCropCategory(activeCrop.name)}</span>
+                      <span className="badge" style={{ background: 'var(--color-surface-alt)', border: '1px solid var(--color-border)', fontSize: '0.75rem' }}>
+                        {viewMode === 'instantaneous' ? '⚡ Instantaneous Scale' : '🌱 Seasonal Scale'}
+                      </span>
+                    </div>
                   </div>
                 </div>
                 
@@ -242,7 +328,7 @@ function CropLibrary() {
               </div>
 
               {/* Dynamic View: Chart or Data */}
-              {viewMode === 'chart' ? (
+              {displayFormat === 'chart' ? (
                 <div style={{ width: '100%', height: 350, background: 'var(--color-surface-alt)', borderTop: '1px solid var(--color-border-soft)', borderBottom: '1px solid var(--color-border-soft)' }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <RadarChart cx="50%" cy="50%" outerRadius="70%" data={radarData}>
@@ -285,19 +371,24 @@ function CropLibrary() {
                     </div>
                   </div>
                   
-                  <div className="text-xs font-semibold text-muted uppercase tracking-wider mb-2">Optimal Nutrients (mg/kg)</div>
+                  <div className="text-xs font-semibold text-muted uppercase tracking-wider mb-2 flex justify-between items-center">
+                    <span>Optimal Nutrients (mg/kg)</span>
+                    <span style={{ fontSize: '0.75rem', color: viewMode === 'instantaneous' ? 'var(--color-primary)' : 'var(--color-text-muted)' }}>
+                      {viewMode === 'instantaneous' ? '⚡ Instantaneous' : '🌱 Seasonal'}
+                    </span>
+                  </div>
                   <div className="flex flex-col gap-2">
                     <div className="flex justify-between">
                       <span className="text-muted">Nitrogen (N):</span>
-                      <span className="font-semibold">{activeCrop.nitrogen?.min} - {activeCrop.nitrogen?.max}</span>
+                      <span className="font-semibold">{getNutrientRange(activeCrop, 'nitrogen').min} - {getNutrientRange(activeCrop, 'nitrogen').max} mg/kg</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted">Phosphorus (P):</span>
-                      <span className="font-semibold">{activeCrop.phosphorus?.min} - {activeCrop.phosphorus?.max}</span>
+                      <span className="font-semibold">{getNutrientRange(activeCrop, 'phosphorus').min} - {getNutrientRange(activeCrop, 'phosphorus').max} mg/kg</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted">Potassium (K):</span>
-                      <span className="font-semibold">{activeCrop.potassium?.min} - {activeCrop.potassium?.max}</span>
+                      <span className="font-semibold">{getNutrientRange(activeCrop, 'potassium').min} - {getNutrientRange(activeCrop, 'potassium').max} mg/kg</span>
                     </div>
                   </div>
                 </div>
@@ -348,10 +439,10 @@ function CropLibrary() {
                 <div style={{ marginTop: 'var(--space-4)', textAlign: 'center' }}>
                   <button 
                     className="btn btn-ghost w-full" 
-                    onClick={() => setViewMode(prev => prev === 'chart' ? 'data' : 'chart')}
+                    onClick={() => setDisplayFormat(prev => prev === 'chart' ? 'data' : 'chart')}
                     style={{ border: '1px solid var(--color-border)', color: 'var(--color-text-muted)' }}
                   >
-                    {viewMode === 'chart' ? '📋 View Raw Data List' : '🕸️ View Radar Chart'}
+                    {displayFormat === 'chart' ? '📋 View Raw Data List' : '🕸️ View Radar Chart'}
                   </button>
                 </div>
               </div>
