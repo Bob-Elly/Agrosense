@@ -455,13 +455,13 @@ function NodeDetail() {
         </p>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 'var(--space-2)' }}>
           <button id="irrigate-smart"
-            className={`btn btn-sm ${irrigState === 'pending' ? 'btn-irrig-pending' : 'btn-primary'}`}
+            className={`btn btn-ghost btn-sm ${irrigState === 'pending' ? 'btn-irrig-pending' : 'text-primary'}`}
             onClick={() => handleIrrigate()}
             disabled={irrigState === 'pending'}
           >
             {irrigState === 'pending' ? '⏳ …' : '💧 Start Smart Irrigation'}
           </button>
-          <button id="stop-irrigation-btn" className="btn btn-danger btn-sm" onClick={handleStop}>
+          <button id="stop-irrigation-btn" className="btn btn-ghost btn-sm text-danger" onClick={handleStop}>
             Stop Pump
           </button>
         </div>
