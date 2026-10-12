@@ -30,18 +30,6 @@ function batteryColor(pct) {
   if (pct < 40) return 'var(--color-warning)'
   return 'var(--color-primary)'
 }
-function moistureColor(v) {
-  if (v == null) return 'var(--color-text-dim)'
-  if (v < 30 || v > 80) return 'var(--color-danger)'
-  if (v < 45 || v > 70) return 'var(--color-warning)'
-  return 'var(--color-primary)'
-}
-function phColor(v) {
-  if (v == null) return 'var(--color-text-dim)'
-  if (v < 5.5 || v > 7.5) return 'var(--color-danger)'
-  if (v < 6.0 || v > 7.0) return 'var(--color-warning)'
-  return 'var(--color-primary)'
-}
 
 // ── Node Card ─────────────────────────────────────────────────────────────────
 function NodeCard({ device, onClick }) {
@@ -81,7 +69,7 @@ function NodeCard({ device, onClick }) {
 }
 
 // ── Health Metric ─────────────────────────────────────────────────────────────
-function HealthMetric({ label, value, unit, color, status }) {
+function HealthMetric({ label, value, unit, color }) {
   return (
     <div style={{
       flex: 1,
@@ -94,7 +82,6 @@ function HealthMetric({ label, value, unit, color, status }) {
       <p style={{ fontSize: '1.75rem', fontWeight: 700, color: color || 'var(--color-text)', lineHeight: 1 }}>
         {value != null ? `${value}${unit}` : '—'}
       </p>
-      {status && <p style={{ fontSize: 'var(--font-xs)', color, marginTop: '4px', fontWeight: 600 }}>{status}</p>}
     </div>
   )
 }
@@ -119,11 +106,6 @@ function Dashboard() {
   const avgMoisture = average(devices.map(d => d.lastReading?.moisture))
   const avgPH       = average(devices.map(d => d.lastReading?.ph))
   const onlineCount = devices.filter(isOnline).length
-
-  const moistureStatus = avgMoisture == null ? null
-    : avgMoisture < 30 ? '⚠ Too dry' : avgMoisture > 80 ? '⚠ Too wet' : '✓ Good'
-  const phStatus = avgPH == null ? null
-    : (avgPH < 5.5 || avgPH > 7.5) ? '⚠ Out of range' : '✓ Good'
 
   return (
     <div className="page">
@@ -182,8 +164,8 @@ function Dashboard() {
       {/* ── Farm Health ── */}
       <p className="section-title">Farm Health Summary</p>
       <div style={{ display: 'flex', gap: 'var(--space-3)', marginBottom: 'var(--space-4)' }}>
-        <HealthMetric label="Avg Soil Moisture" value={avgMoisture} unit="%" color={moistureColor(avgMoisture)} status={moistureStatus} />
-        <HealthMetric label="Avg Soil pH"        value={avgPH}       unit="" color={phColor(avgPH)}            status={phStatus} />
+        <HealthMetric label="Avg Soil Moisture" value={avgMoisture} unit="%" color="var(--color-accent)" />
+        <HealthMetric label="Avg Soil pH"        value={avgPH}       unit="" color="var(--color-primary)" />
       </div>
 
       {devices.length > 0 && (
